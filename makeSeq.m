@@ -35,7 +35,7 @@ fov = [180 180 3]*1e-3;             % field of view
 slThick = fov(3)/Nz;                % slice thickness
 
 % Basic temporal rames
-Nframes = 10;                       % number of temporal frames (image volumes)
+Nframes = 2;                        % number of temporal frames (image volumes)
 Ndummyframes = 4;                   % dummy frames to reach steady state
 
 % CAIPI sampling parameters

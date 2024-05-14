@@ -1,9 +1,10 @@
 %%
-fn = 'Pball120inside.7';
-fn_adc = 'adc/Pball120adc.mod';
+Nx = 180;
+fn = sprintf('Pball%dinside.7', Nx);
+fn_adc = sprintf('adc/Pball%dadc.mod', Nx);
 
 % Redefine some parameters for convenience
-Nx = 120; Ny = Nx; Nframes = 2; Ncoils = 32;
+Ny = Nx; Nframes = 2; Ncoils = 32;
 ETL = Ny; % echo train length (Ny)
 Np = 1; % number of partitions
 
@@ -18,7 +19,7 @@ for frame = 1:Nframes
     % odd/even echo k-space sampling locations (ramp sampling)
     [rf,gx,gy,gz,desc,paramsint16,pramsfloat,hdr] = toppe.readmod(fn_adc); % commented out because doesn't match
     Nfid = size(ksp_raw_frame,1); % hdr.rfres;
-    delay = -0.5; % estimate and apply odd/even k-space delay (samples)
+    delay = -1.5 ; % estimate and apply odd/even k-space delay (samples)
     [kxo, kxe] = toppe.utils.getk(sysGE, fn_adc, Nfid, delay);
     
     % grid
@@ -74,6 +75,8 @@ end
 %% Viz
 close all;
 frame = 2;
-figure; im(imgs(:,:,frame))
+figure;
+subplot(121); im(abs(imgs(:,:,frame))); title('magnitude'); colorbar;
+subplot(122); im(imag(imgs(:,:,frame))); title('phase'); colorbar;
+sgtitle(fn(1:end-2));
 figure; im(log(abs(ksp(:,:,frame,:))))
-figure; im(imag(imgs(:,:,frame)))
