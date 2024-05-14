@@ -45,7 +45,7 @@ fprintf('Constant phase offset (radians): %f\n', a(1));
 fprintf('Linear term (radians/fov): %f\n', a(2));
 
 %% Get sensitivity maps with PISCO
-addpath('~/github/pisco');
+addpath('pisco/');
 smaps = zeros(Nx, Ny, Nframes, Ncoils);
 
 for frame = 1:Nframes

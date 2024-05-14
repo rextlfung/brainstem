@@ -1,0 +1,10 @@
+# Ignore these crap
+*.7
+*.asv
+*.entry
+*.mod
+*.seq
+*.tar
+*.tgz
+*.txt
+*.fig
