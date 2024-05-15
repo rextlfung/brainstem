@@ -1,12 +1,22 @@
 %%
-Nx = 180;
-fn = sprintf('Pball%dinside.7', Nx);
+Nx = 90;
+scanner = 'inside';
+fn = sprintf('Pball%d%s.7', Nx, scanner);
 fn_adc = sprintf('adc/Pball%dadc.mod', Nx);
 
 % Redefine some parameters for convenience
 Ny = Nx; Nframes = 2; Ncoils = 32;
 ETL = Ny; % echo train length (Ny)
 Np = 1; % number of partitions
+
+% Load in raw data
+ksp_raw = hmriutils.io.ge.loadpfile(fn, [], [], [], 'acqOrder', true); 
+ksp_raw = flip(ksp_raw, 1); % tv6 flips data along FID direction
+[Nfid,Ncoils,N] = size(ksp_raw);
+ksp_raw = ksp_raw(:,:,1:ETL*Np*Nframes);
+ksp_raw = reshape(ksp_raw, Nfid, Ncoils, ETL, Np*Nframes);
+ksp_raw = permute(ksp_raw, [1 3 4 2]); % [Nfid ETL Np Nc]
+ksp_raw(:,2:2:end,:,:) = flip(ksp_raw(:,2:2:end,:,:),1); % Flip even lines
 
 % Load in 2D time series data frame by frame.
 ksp = zeros(Nx, Ny, Nframes, Ncoils);
@@ -19,7 +29,12 @@ for frame = 1:Nframes
     % odd/even echo k-space sampling locations (ramp sampling)
     [rf,gx,gy,gz,desc,paramsint16,pramsfloat,hdr] = toppe.readmod(fn_adc); % commented out because doesn't match
     Nfid = size(ksp_raw_frame,1); % hdr.rfres;
-    delay = -1.5 ; % estimate and apply odd/even k-space delay (samples)
+    % estimate and apply odd/even k-space delay (samples)
+    if strcmp(scanner,'inside')
+        delay = -0.5;
+    elseif strcmp(scanner,'outside')
+        delay = 0.0;
+    end
     [kxo, kxe] = toppe.utils.getk(sysGE, fn_adc, Nfid, delay);
     
     % grid
@@ -76,7 +91,8 @@ end
 close all;
 frame = 2;
 figure;
-subplot(121); im(abs(imgs(:,:,frame))); title('magnitude'); colorbar;
-subplot(122); im(imag(imgs(:,:,frame))); title('phase'); colorbar;
-sgtitle(fn(1:end-2));
+subplot(121); im(abs(imgs(:,:,frame)),'cbar'); title('magnitude');
+subplot(122); im(imag(imgs(:,:,frame)),'cbar'); title('phase');
+sgtitle(sprintf('%s, delay = %d',fn(1:end-2),delay));
+savefig(strcat('figs/',fn(1:end-2),'.fig'));
 figure; im(log(abs(ksp(:,:,frame,:))))
