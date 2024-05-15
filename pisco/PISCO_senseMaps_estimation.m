@@ -192,7 +192,7 @@ if nargin < 13 || not(isnumeric(gauss_win_param)) || not(numel(gauss_win_param))
 end
 
 if nargin < 14
-    verbose = 0;
+    verbose = 1;
 end
 
 if verbose == 1
