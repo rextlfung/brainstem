@@ -31,7 +31,7 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 
 % Basic parameters
 mb = 1;                             % multiband/SMS factor
-Nx = 180; Ny = Nx; Nz = 1;           % Matrix sizes
+Nx = 90; Ny = Nx; Nz = 1;           % Matrix sizes
 fov = [180 180 3]*1e-3;             % field of view
 slThick = fov(3)/Nz;                % slice thickness
 
@@ -185,13 +185,15 @@ kzStepMax = max(abs(kzStep));
 rf_phase = 0;
 rf_inc = 0;
 
-for shot = -Ndummyframes:Nframes %nShots
+% Create scanloop
+for frame = -Ndummyframes:Nframes
 
-        isDummyShot = shot < 0;
-        isCalShot = shot == 0;
+        % Convenience booleans for turning off adc and y gradient
+        isDummyFrame = frame < 0;
+        isCalFrame = frame == 0;
 
         % Label the first block in each segment with the segment ID (see Pulseq on GE manual)
-        segmentID = 3 - (shot <= 0) - (shot == 0);
+        segmentID = 3 - (frame <= 0) - (frame == 0);
 
         % RF spoiling
         rf.phaseOffset = rf_phase/180*pi;
@@ -209,16 +211,16 @@ for shot = -Ndummyframes:Nframes %nShots
 
         % Move to corner of k-space
         if mb > 1
-            seq.addBlock(gxPre, gyPre, mr.scaleGrad(gzPre, 1 - 2/Nz*(shot-1)));
+            seq.addBlock(gxPre, gyPre, mr.scaleGrad(gzPre, 1 - 2/Nz*(frame-1)));
             seq.addBlock(gro, adc, ...
                          mr.scaleGrad(gyBlipUp, kyStep(1)/kyStepMax), ...
                          mr.scaleGrad(gzBlipUp, kzStep(1)/kzStepMax));
         else
-            if isDummyShot
+            if isDummyFrame
                 seq.addBlock(gxPre, gyPre);
                 seq.addBlock(gro, ...
                              mr.scaleGrad(gyBlipUp, kyStep(1)/kyStepMax));
-            elseif isCalShot
+            elseif isCalFrame
                 seq.addBlock(gxPre);
                 seq.addBlock(gro, adc);
             else
@@ -239,9 +241,9 @@ for shot = -Ndummyframes:Nframes %nShots
                 gzbdu = mr.addGradients({gzbd, gzbu}, sys);
                 seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(ie-1)), gybdu, gzbdu);
             else
-                if isDummyShot
+                if isDummyFrame
                     seq.addBlock(mr.scaleGrad(gro, (-1)^(ie-1)), gybdu);
-                elseif isCalShot
+                elseif isCalFrame
                     seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(ie-1)));
                 else
                     seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(ie-1)), gybdu);
@@ -256,10 +258,10 @@ for shot = -Ndummyframes:Nframes %nShots
                          mr.scaleGrad(gyBlipDown, kyStep(ie)/kyStepMax), ...
                          mr.scaleGrad(gzBlipDown, kzStep(ie)/kzStepMax));
         else
-            if isDummyShot
+            if isDummyFrame
                 seq.addBlock(mr.scaleGrad(gro, (-1)^(ie)), ...
                              mr.scaleGrad(gyBlipDown, kyStep(ie)/kyStepMax));
-            elseif isCalShot
+            elseif isCalFrame
                 seq.addBlock(adc, ...
                              mr.scaleGrad(gro, (-1)^(ie)));
             else
