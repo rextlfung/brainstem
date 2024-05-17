@@ -29,6 +29,7 @@ for frame = 1:Nframes
     % odd/even echo k-space sampling locations (ramp sampling)
     [rf,gx,gy,gz,desc,paramsint16,pramsfloat,hdr] = toppe.readmod(fn_adc); % commented out because doesn't match
     Nfid = size(ksp_raw_frame,1); % hdr.rfres;
+    
     % estimate and apply odd/even k-space delay (samples)
     if strcmp(scanner,'inside')
         delay = -0.5;
