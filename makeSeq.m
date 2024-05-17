@@ -9,7 +9,8 @@
 % can be executed identically (to us precision) on Siemens and GE systems.
 % For more information about preparing a Pulseq file for execution on GE scanners,
 % see the 'Pulseq on GE' manual.
-
+%
+% Performance appears to hold up to 120x120 (does better on inside scanner)
 %% Paths
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
@@ -34,7 +35,7 @@ Nx = 180; Ny = Nx; Nz = 1;           % Matrix sizes
 fov = [180 180 3]*1e-3;             % field of view
 slThick = fov(3)/Nz;                % slice thickness
 
-% Basic temporal rames
+% Basic temporal parameters
 Nframes = 2;                        % number of temporal frames (image volumes)
 Ndummyframes = 4;                   % dummy frames to reach steady state
 
@@ -55,7 +56,7 @@ TR = 400e-3;                        % repetition time (s)
 T1 = 1500e-3;                       % T1 (s)
 
 % Excitation stuff
-alpha = 180/pi * acos(exp(-T1/TR)); % Ernst angle (degrees)
+alpha = 180/pi * acos(exp(-TR/T1)); % Ernst angle (degrees)
 rfDur = 8e-3;                       % RF pulse duration (s)
 rfTB  = 6;                          % RF pulse time-bandwidth product
 rfSpoilingInc = 117;                % RF spoiling increment (degrees)
