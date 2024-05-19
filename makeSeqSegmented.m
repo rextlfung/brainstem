@@ -71,11 +71,11 @@ fatOffresFreq = sys.gamma*sys.B0*fatChemShift;  % Hz
 
 % create caipi.mat, and load it
 pyFile = [caipiPythonPath 'skippedcaipi_sampling.py'];
-pyCmd = sprintf('python %s %d %d %d %d %d %d', ...
+pyCmd = sprintf('python3 %s %d %d %d %d %d %d', ...
     pyFile, Ny, Nz, Ry, Rz, CaipiShiftZ, 1);
 
 % try to call Python script from Matlab
-pyenv(ExecutionMode="InProcess");
+pyenv(ExecutionMode="OutOfProcess");
 [status, cmdout] = system(pyCmd, 'LD_PRELOAD', '/usr/local/MATLAB/R2023b/sys/os/glnxa64/libstdc++.so.6');
 if status == 1 % if failed
     fprintf(cmdout);
@@ -160,9 +160,9 @@ gzPre = mr.makeTrapezoid('z', sys, ...
     'Area', -Nz/2*deltak(3), ... 
     'Duration', Tpre);
 gxSpoil = mr.makeTrapezoid('x', sys, ...
-    'Area', Nx*deltak(1)*NcyclesSpoil);
+    'Area', -Nx*deltak(1)*NcyclesSpoil);
 gzSpoil = mr.makeTrapezoid('z', sys, ...
-    'Area', Nx*deltak(1)*NcyclesSpoil);
+    'Area', -Nx*deltak(1)*NcyclesSpoil);
 
 %% Calculate delay to achieve desired TE
 kyIndAtTE = find(kyInds-Ny/2/Nsegments == min(abs(kyInds-Ny/2/Nsegments)));
@@ -222,7 +222,7 @@ for frame = -Ndummyframes:Nframes
             else
                 gyPreSeg = mr.scaleGrad(gyPre, ((seg - 1)*gyBlip.area + gyPre.area)/gyPre.area);
                 seq.addBlock(gxPre, gyPreSeg);
-                seq.addBlock(gro, ...
+                seq.addBlock(gro, adc,...
                              mr.scaleGrad(gyBlipUp, Nsegments*kyStep(1)/kyStepMax));
             end
     
@@ -283,7 +283,6 @@ seq2ge('brainstemEPI2Dsegmented.seq', sysGE, 'brainstemEPI2Dsegmented.tar')
 system('tar -xvf brainstemEPI2Dsegmented.tar')
 toppe.plotseq(sysGE);
 
-return;
 %% k-space trajectory calculation and plot
 [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
 figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot

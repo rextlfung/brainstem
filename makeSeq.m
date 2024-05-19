@@ -31,7 +31,7 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 
 % Basic parameters
 mb = 1;                             % multiband/SMS factor
-Nx = 90; Ny = Nx; Nz = 1;           % Matrix sizes
+Nx = 180; Ny = Nx; Nz = 1;           % Matrix sizes
 fov = [180 180 3]*1e-3;             % field of view
 slThick = fov(3)/Nz;                % slice thickness
 
@@ -158,9 +158,9 @@ gzPre = mr.makeTrapezoid('z', sys, ...
     'Area', -Nz/2*deltak(3), ... 
     'Duration', Tpre);
 gxSpoil = mr.makeTrapezoid('x', sys, ...
-    'Area', Nx*deltak(1)*nCyclesSpoil);
+    'Area', -Nx*deltak(1)*nCyclesSpoil);
 gzSpoil = mr.makeTrapezoid('z', sys, ...
-    'Area', Nx*deltak(1)*nCyclesSpoil);
+    'Area', -Nx*deltak(1)*nCyclesSpoil);
 
 
 %% Calculate delay to achieve desired TE
@@ -300,7 +300,6 @@ seq2ge('brainstemEPI2D.seq', sysGE, 'brainstemEPI2D.tar')
 system('tar -xvf brainstemEPI2D.tar')
 toppe.plotseq(sysGE);
 
-return;
 %% k-space trajectory calculation and plot
 [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
 figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
