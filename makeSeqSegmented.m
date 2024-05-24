@@ -58,7 +58,7 @@ TR = volumeTR/Nsegments;            % time between excitations (s)
 T1 = 1500e-3;                       % T1 (s)
 
 % Excitation stuff
-alpha = 180/pi * acos(exp(-(TR/Nsegments)/T1)); % Ernst angle (degrees)
+alpha = 180/pi * acos(exp(-TR/T1)); % Ernst angle (degrees)
 rfDur = 8e-3;                                   % RF pulse duration (s)
 rfTB  = 6;                          % RF pulse time-bandwidth product
 rfSpoilingInc = 117;                % RF spoiling increment (degrees)
@@ -160,9 +160,9 @@ gzPre = mr.makeTrapezoid('z', sys, ...
     'Area', -Nz/2*deltak(3), ... 
     'Duration', Tpre);
 gxSpoil = mr.makeTrapezoid('x', sys, ...
-    'Area', -Nx*deltak(1)*NcyclesSpoil);
+    'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1));
 gzSpoil = mr.makeTrapezoid('z', sys, ...
-    'Area', -Nx*deltak(1)*NcyclesSpoil);
+    'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1));
 
 %% Calculate delay to achieve desired TE
 kyIndAtTE = find(kyInds-Ny/2/Nsegments == min(abs(kyInds-Ny/2/Nsegments)));
@@ -205,10 +205,13 @@ for frame = -Ndummyframes:Nframes
             % RF excitation
             seq.addBlock(rf, gzRF, mr.makeLabel('SET', 'TRID', segmentID));
     
-            % TE delay. Different for each segment so TE is smooth along central line of k-space
+            % TE delay
             if TE > minTE
-                seq.addBlock(mr.makeDelay(TEdelay + seg*mr.calcDuration(gro)));
+                seq.addBlock(mr.makeDelay(TEdelay));
             end
+
+            % Segment delay so TE is smooth along central line of k-space
+            seq.addBlock(mr.makeDelay(seg*mr.calcDuration(gro)));
     
             % Move to corner of k-space and sample the first line
             if isDummyFrame
@@ -282,7 +285,7 @@ seq.write('brainstemEPI2Dsegmented.seq')       % Write to pulseq file
 seq2ge('brainstemEPI2Dsegmented.seq', sysGE, 'brainstemEPI2Dsegmented.tar')
 system('tar -xvf brainstemEPI2Dsegmented.tar')
 toppe.plotseq(sysGE);
-
+return;
 %% k-space trajectory calculation and plot
 [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
 figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
