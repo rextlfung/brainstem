@@ -74,7 +74,7 @@ pyCmd = sprintf('python %s %d %d %d %d %d %d', ...
 
 % try to call Python script from Matlab
 pyenv(ExecutionMode="InProcess");
-[status, cmdout] = system(pyCmd, 'LD_PRELOAD', '/usr/local/MATLAB/R2023b/sys/os/glnxa64/libstdc++.so.6');
+[status, cmdout] = system(pyCmd, 'LD_PRELOAD', '/lib/x86_64-linux-gnu/libstdc++.so.6');
 if status == 1 % if failed
     fprintf(cmdout);
     fprintf('Open a terminal and run the following python command:\n\t%s\n', pyCmd);

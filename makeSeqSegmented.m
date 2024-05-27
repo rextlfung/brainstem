@@ -30,11 +30,11 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
     'maxRF', 0.25);
 
 % Basic parameters
-Nx = 180; Ny = Nx; Nz = 1;          % Matrix sizes
-fov = [180 180 3]*1e-3;             % field of view
+Nx = 200; Ny = Nx; Nz = 1;          % Matrix sizes
+fov = [Nx, Ny, 3]*1e-3;             % field of view
 slThick = fov(3)/Nz;                % slice thickness
 mb = 1;                             % multiband/SMS factor
-Nsegments = 2;                      % number of segments in EPI readout
+Nsegments = 4;                      % number of segments in EPI readout
 
 % Basic temporal parameters
 Nframes = 2;                        % number of temporal frames (image volumes)
@@ -75,8 +75,8 @@ pyCmd = sprintf('python3 %s %d %d %d %d %d %d', ...
     pyFile, Ny, Nz, Ry, Rz, CaipiShiftZ, 1);
 
 % try to call Python script from Matlab
-pyenv(ExecutionMode="OutOfProcess");
-[status, cmdout] = system(pyCmd, 'LD_PRELOAD', '/usr/local/MATLAB/R2023b/sys/os/glnxa64/libstdc++.so.6');
+pyenv(ExecutionMode="InProcess");
+[status, cmdout] = system(pyCmd, 'LD_PRELOAD', '/lib/x86_64-linux-gnu/libstdc++.so.6');
 if status == 1 % if failed
     fprintf(cmdout);
     fprintf('Open a terminal and run the following python command:\n\t%s\n', pyCmd);
@@ -171,8 +171,8 @@ minTE = mr.calcDuration(gzRF) - mr.calcDuration(rf)/2 - rf.delay + mr.calcDurati
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(rf) + rf.delay + mr.calcDuration(gxPre)...
-                + Ny/Nsegments*mr.calcDuration(gro) + mr.calcDuration(gxSpoil);
+minTR = mr.calcDuration(gzRF) + ...
+                + Ny/Nsegments*mr.calcDuration(gro) + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 
 %% Assemble sequence
@@ -211,7 +211,9 @@ for frame = -Ndummyframes:Nframes
             end
 
             % Segment delay so TE is smooth along central line of k-space
-            seq.addBlock(mr.makeDelay(seg*mr.calcDuration(gro)));
+            if seg > 1
+                seq.addBlock(mr.makeDelay((seg - 1)*mr.calcDuration(gro)));
+            end
     
             % Move to corner of k-space and sample the first line
             if isDummyFrame
@@ -284,8 +286,9 @@ seq.write('brainstemEPI2Dsegmented.seq')       % Write to pulseq file
 %% GE stuff
 seq2ge('brainstemEPI2Dsegmented.seq', sysGE, 'brainstemEPI2Dsegmented.tar')
 system('tar -xvf brainstemEPI2Dsegmented.tar')
-toppe.plotseq(sysGE);
+toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
 return;
+
 %% k-space trajectory calculation and plot
 [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
 figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
