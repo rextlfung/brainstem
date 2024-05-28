@@ -1,29 +1,40 @@
 %%
-Nx = 120; Nsegments = 2;
-scanner = 'inside';
+Nx = 200; Nsegments = 4; scanner = 'inside';
 fn = sprintf('Pball%d%s%dsegs.7', Nx, scanner, Nsegments);
 fn_adc = sprintf('adc/Pball%dadc_%dsegs.mod', Nx, Nsegments);
 doSENSE = false;
 
 % Redefine some parameters for convenience
-Ny = Nx; Nframes = 3; Ncoils = 32;
+Ny = Nx; Nframes = 1 + 2; Ncoils = 32;
 ETL = Ny; % echo train length (Ny)
 Np = 1; % number of partitions
 
-% Load in raw data
-ksp_raw = hmriutils.io.ge.loadpfile(fn, [], [], [], 'acqOrder', true); 
-ksp_raw = flip(ksp_raw, 1); % tv6 flips data along FID direction
-[Nfid,Ncoils,N] = size(ksp_raw);
-ksp_raw = ksp_raw(:,:,1:ETL*Np*Nframes);
-ksp_raw = reshape(ksp_raw, Nfid, Ncoils, ETL, Np*Nframes);
-ksp_raw = permute(ksp_raw, [1 3 4 2]); % [Nfid ETL Np Nc]
-size(ksp_raw);
-ksp = zeros(size(ksp_raw));
-for seg = 1:Nsegments
-    ksp(:,seg:Nsegments:end,:,:) = ksp_raw(:,1:Ny/Nsegments,:,:);
+%% Load in raw data
+close all;
+if false
+    ksp_raw = hmriutils.io.ge.loadpfile(fn, [], [], [], 'acqOrder', true); 
+    ksp_raw = flip(ksp_raw, 1); % tv6 flips data along FID direction
+    [Nfid,Ncoils,N] = size(ksp_raw);
+    ksp_raw = ksp_raw(:,:,1:ETL*Np*Nframes);
+    ksp_raw = reshape(ksp_raw, Nfid, Ncoils, ETL, Np*Nframes);
+    ksp_raw = permute(ksp_raw, [1 3 4 2]); % [Nfid ETL Np Nc]
+    size(ksp_raw);
+    figure; im(log(abs(ksp_raw(:,:,2,:))))
+
+    % naive recon
+    ksp = zeros(size(ksp_raw));
+    for seg = 1:Nsegments
+        range = (1:Ny/Nsegments) + (seg-1)*Ny/Nsegments;
+        tmp = ksp_raw(:,range,:,:);
+        tmp(:,1:2:end,:,:) = flip(tmp(:,1:2:end,:,:),1);
+        ksp(:,seg:Nsegments:end,:,:) = tmp;
+    end
+    figure; im(log(abs(ksp(:,:,2,:))))
+    
+    imgs = ifftshift(ifft2(fftshift(ksp)));
+    img = sqrt(sum(imgs.^2,4));
+    figure; im(img(:,:,2))
 end
-ksp(:,1:2:end,:,:) = flip(ksp(:,1:2:end,:,:),1);
-figure; im(log(abs(ksp(:,:,2,:))))
 
 %% Load in 2D time series data frame by frame.
 ksp = zeros(Nx, Ny, Nframes, Ncoils);
@@ -37,13 +48,24 @@ for frame = 1:Nframes
     fprintf('Max real part: %d\n', max(real(ksp_raw_frame(:))))
     fprintf('Max imag part: %d\n', max(imag(ksp_raw_frame(:))))
 
+    % rearrange segments into proper locations
+    tmp = zeros(size(ksp_raw_frame));
+    for seg = 1:Nsegments
+        range = (1:Ny/Nsegments) + (seg-1)*Ny/Nsegments;
+        tmp2 = ksp_raw_frame(:,range,:);
+        tmp2(:,1:2:end,:) = flip(tmp2(:,1:2:end,:),1);
+        tmp(:,seg:Nsegments:end,:) = tmp2;
+    end
+    tmp(:,1:2:end,:) = flip(tmp(:,1:2:end,:),1); % make it look like 1-shot EPI
+    ksp_raw_frame = tmp;
+
     % odd/even echo k-space sampling locations (ramp sampling)
     [rf,gx,gy,gz,desc,paramsint16,pramsfloat,hdr] = toppe.readmod(fn_adc); % commented out because doesn't match
     Nfid = size(ksp_raw_frame,1); % hdr.rfres;
 
     % estimate and apply odd/even k-space delay (samples)
     if strcmp(scanner,'inside')
-        delay = -1.5;
+        delay = -0.5;
     elseif strcmp(scanner,'outside')
         delay = 0.5;
     end
@@ -52,13 +74,6 @@ for frame = 1:Nframes
     % grid
     ksp_frame = hmriutils.epi.rampsampepi2cart(ksp_raw_frame, kxo, kxe, Nx, fov(1)*100, 'spline');
     ksp_frame = squeeze(ksp_frame); % Discard slice dimensions since it's one slice
-
-    % rearrange segments into proper locations
-    tmp = zeros(size(ksp_frame));
-    for seg = 1:Nsegments
-        tmp(:,seg:Nsegments:end,:,:) = ksp_frame(:,(seg-1)*Ny/Nsegments+1:seg*Ny/Nsegments,:,:);
-    end
-    ksp_frame = tmp;
 
     % phase correct
     if isCalShot

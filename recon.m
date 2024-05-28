@@ -1,9 +1,9 @@
 %%
-Nx = 180;
+Nx = 120;
 scanner = 'inside';
 fn = sprintf('Pball%d%s.7', Nx, scanner);
 fn_adc = sprintf('adc/Pball%dadc.mod', Nx);
-doSENSE = true;
+doSENSE = false;
 
 % Redefine some parameters for convenience
 Ny = Nx; Nframes = 3; Ncoils = 32;
