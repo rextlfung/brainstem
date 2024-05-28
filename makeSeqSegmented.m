@@ -171,7 +171,7 @@ minTE = mr.calcDuration(gzRF) - mr.calcDuration(rf)/2 - rf.delay + mr.calcDurati
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(gzRF) + ...
+minTR = mr.calcDuration(gzRF) + mr.calcDuration(gzPre)...
                 + Ny/Nsegments*mr.calcDuration(gro) + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 
@@ -211,8 +211,9 @@ for frame = -Ndummyframes:Nframes
             end
 
             % Segment delay so TE is smooth along central line of k-space
+            segDelay = (seg - 1)*mr.calcDuration(gro);
             if seg > 1
-                seq.addBlock(mr.makeDelay((seg - 1)*mr.calcDuration(gro)));
+                seq.addBlock(mr.makeDelay(segDelay));
             end
     
             % Move to corner of k-space and sample the first line
@@ -262,7 +263,7 @@ for frame = -Ndummyframes:Nframes
             seq.addBlock(gxSpoil, gzSpoil);
     
             % Achieve desired TR
-            seq.addBlock(mr.makeDelay(TRdelay));
+            seq.addBlock(mr.makeDelay(TRdelay - segDelay));
         end
  end
 
