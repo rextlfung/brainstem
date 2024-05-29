@@ -31,7 +31,7 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 
 % Basic parameters
 Nx = 200; Ny = Nx; Nz = 1;          % Matrix sizes
-fov = [Nx, Ny, 3]*1e-3;             % field of view
+fov = [Nx, Ny, 1.5]*1e-3;             % field of view
 slThick = fov(3)/Nz;                % slice thickness
 mb = 1;                             % multiband/SMS factor
 Nsegments = 4;                      % number of segments in EPI readout
@@ -287,7 +287,7 @@ seq.write('brainstemEPI2Dsegmented.seq')       % Write to pulseq file
 %% GE stuff
 seq2ge('brainstemEPI2Dsegmented.seq', sysGE, 'brainstemEPI2Dsegmented.tar')
 system('tar -xvf brainstemEPI2Dsegmented.tar')
-toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
+figure; toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
 return;
 
 %% k-space trajectory calculation and plot
