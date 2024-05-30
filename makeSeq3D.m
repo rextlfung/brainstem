@@ -1,6 +1,6 @@
-% brainstem interleaved 2D-EPI sequence in Pulseq
+% brainstem interleaved 3D-EPI sequence in Pulseq
 %
-% This script creates the file 'brainstem2DEPIsegmented.seq', that can be executed directly
+% This script creates the file 'brainstem3DEPIsegmented.seq', that can be executed directly
 % on Siemens MRI scanners using the Pulseq interpreter.
 % The .seq file can also be converted to a .tar file that can be executed on GE
 % scanners, see main.m.
@@ -10,12 +10,14 @@
 % For more information about preparing a Pulseq file for execution on GE scanners,
 % see the 'Pulseq on GE' manual.
 %
-% Performance:
-% It works for up to slices of 1.5mm thinness
-%% Paths
+% Performance?
+% Very low temporal resolution (1.2s) but
+% High temporal resolution (1mm isotropic)
+%% Path and options
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
 
+doDetailedCheck = false;
 %% Define experimental parameters
 sys = mr.opts('maxGrad', 40, 'gradUnit','mT/m', ...
               'maxSlew', 120, 'slewUnit', 'T/m/s', ...
@@ -31,10 +33,8 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
     'maxRF', 0.25);
 
 % Basic parameters
-Nx = 200; Ny = Nx; Nz = 1;          % Matrix sizes
-fov = [Nx, Ny, 1.5]*1e-3;             % field of view
-slThick = fov(3)/Nz;                % slice thickness
-mb = 1;                             % multiband/SMS factor
+Nx = 200; Ny = Nx; Nz = 3;          % Matrix sizes
+fov = [Nx, Ny, 3]*1e-3;             % field of view
 Nsegments = 4;                      % number of segments in EPI readout
 
 % Basic temporal parameters
@@ -43,8 +43,8 @@ Ndummyframes = 4;                   % dummy frames to reach steady state
 
 % CAIPI sampling parameters
 Ry = 1;                             % ky undersampling factor
-Rz = mb;                            % kz undersampling factor
-CaipiShiftZ = 1;                    % Caipi shift factor
+Rz = 1;                             % kz undersampling factor
+CaipiShiftZ = 2;                    % Caipi shift factor
 pf_ky = 1.0;                        % partial Fourier factor along ky
 etl = ceil(pf_ky*Ny/Ry);            % echo train length
 NcyclesSpoil = 3;                   % number of Gx and Gz spoiler cycles
@@ -54,13 +54,14 @@ dwell = 4e-6;                       % ADC sample time (s). For GE, must be multi
 
 % Decay parameters
 TE = 30e-3;                         % echo time (s)
-volumeTR = 400e-3;                  % temporal frame rate (s)
-TR = volumeTR/Nsegments;            % time between excitations (s)
+volumeTR = 1000e-3;                 % temporal frame rate (s)
+zTR = volumeTR/Nz;                  % time to acquire a "slice" or z (s)
+TR = zTR/Nsegments;            % time between excitations (s)
 T1 = 1500e-3;                       % T1 (s)
 
 % Excitation stuff
 alpha = 180/pi * acos(exp(-TR/T1)); % Ernst angle (degrees)
-rfDur = 8e-3;                                   % RF pulse duration (s)
+rfDur = 8e-3;                       % RF pulse duration (s)
 rfTB  = 6;                          % RF pulse time-bandwidth product
 rfSpoilingInc = 117;                % RF spoiling increment (degrees)
 
@@ -95,17 +96,13 @@ kyStep = diff(kyInds);
 kzStep = diff(kzInds);
 
 %% Excitation pulse
+mb = 1; % just to reuse Jon's SMS pulseq function for volume excitation
 sliceSep = fov(3)/mb;   % center-to-center separation between SMS slices (m)
 [rf, gzRF, freq] = getsmspulse(alpha, slThick, rfTB, rfDur, ...
     mb, sliceSep, sysGE, sys, ...
     'doSim', false, ...    % Plot simulated SMS slice profile
     'type', 'st', ...     % SLR choice. 'ex' = 90 excitation; 'st' = small-tip
     'ftype', 'ls');       % filter design. 'ls' = least squares
-
-% Doesn't work because unable to run python for some reason
-% [rf, gzRF, gzr, delay] = mr.makeSLRpulse(alpha,'sliceThickness',slThick,...
-%                                       'timeBwProduct',rfTB,'duration',rfDur,...
-%                                       'system', sys);
 
 %% Fat sat pulse (TODO!!!)
 
@@ -167,7 +164,8 @@ gzSpoil = mr.makeTrapezoid('z', sys, ...
 
 %% Calculate delay to achieve desired TE
 kyIndAtTE = find(kyInds-Ny/2/Nsegments == min(abs(kyInds-Ny/2/Nsegments)));
-minTE = mr.calcDuration(gzRF) - mr.calcDuration(rf)/2 - rf.delay + mr.calcDuration(gxPre) + ...
+minTE = mr.calcDuration(gzRF) - mr.calcDuration(rf)/2 - rf.delay + ...
+        mr.calcDuration(gxPre) + ...
         (kyIndAtTE-0.5) * mr.calcDuration(gro);
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
@@ -188,10 +186,15 @@ rf_inc = 0;
 
 for frame = -Ndummyframes:Nframes
 
-        % Convenience booleans for turning off adc and y gradient
-        isDummyFrame = frame < 0;
-        isCalFrame = frame == 0;
-        
+    % Convenience booleans for turning off adc and y gradient
+    isDummyFrame = frame < 0;
+    isCalFrame = frame == 0;
+    
+    % z-loop (move to proper kz location)
+    for z = 1:Nz
+        gzPreTmp = mr.scaleGrad(gzPre,ceil(Nz/2) - z);
+    
+        % In plane loop (2D segmented EPI)
         for seg = 1:Nsegments
             % Label the first block in each segment with the segment ID (see Pulseq on GE manual)
             % !!This segment ID is NOT to be confused with the EPI segments!!
@@ -218,17 +221,16 @@ for frame = -Ndummyframes:Nframes
             end
     
             % Move to corner of k-space and sample the first line
+            gyPreSeg = mr.scaleGrad(gyPre, ((seg - 1)*gyBlip.area + gyPre.area)/gyPre.area);
             if isDummyFrame
-                gyPreSeg = mr.scaleGrad(gyPre, ((seg - 1)*gyBlip.area + gyPre.area)/gyPre.area);
-                seq.addBlock(gxPre, gyPreSeg);
+                seq.addBlock(gxPre, gyPreSeg, gzPreTmp);
                 seq.addBlock(gro, ...
                              mr.scaleGrad(gyBlipUp, Nsegments*kyStep(1)/kyStepMax));
             elseif isCalFrame
                 seq.addBlock(gxPre);
                 seq.addBlock(gro, adc);
             else
-                gyPreSeg = mr.scaleGrad(gyPre, ((seg - 1)*gyBlip.area + gyPre.area)/gyPre.area);
-                seq.addBlock(gxPre, gyPreSeg);
+                seq.addBlock(gxPre, gyPreSeg, gzPreTmp);
                 seq.addBlock(gro, adc,...
                              mr.scaleGrad(gyBlipUp, Nsegments*kyStep(1)/kyStepMax));
             end
@@ -266,7 +268,8 @@ for frame = -Ndummyframes:Nframes
             % Achieve desired TR
             seq.addBlock(mr.makeDelay(TRdelay - segDelay));
         end
- end
+    end
+end
 
 %% Check sequence timing
 [ok, error_report]=seq.checkTiming;
@@ -278,27 +281,27 @@ else
     fprintf('\n');
 end
 
-%% Output for execution and plot
+%% Output for execution
 seq.setDefinition('FOV', fov);
-seq.setDefinition('Name', 'brainstemEPI2Dsegmented');
-seq.write('brainstemEPI2Dsegmented.seq')       % Write to pulseq file
-
-% seq.plot(); %'timeRange', [0 0.2]);
+seq.setDefinition('Name', 'brainstemEPI3D');
+seq.write('brainstemEPI3D.seq')
 
 %% GE stuff
-seq2ge('brainstemEPI2Dsegmented.seq', sysGE, 'brainstemEPI2Dsegmented.tar')
-system('tar -xvf brainstemEPI2Dsegmented.tar')
+seq2ge('brainstemEPI3D.seq', sysGE, 'brainstemEPI3D.tar')
+system('tar -xvf brainstemEPI3D.tar')
 figure; toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
-return;
 
-%% k-space trajectory calculation and plot
-[ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
-figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
-axis('equal'); % enforce aspect ratio for the correct trajectory display
-hold;plot(ktraj_adc(1,:),ktraj_adc(2,:),'r.'); % plot the sampling points
-title('full k-space trajectory (k_x x k_y)');
-
-%% Optional slow step, but useful for testing during development,
-% e.g., for the real TE, TR or for staying within slewrate limits
-rep = seq.testReport;
-fprintf([rep{:}]);
+%% Detailed check that takes some time to run
+if doDetailedCheck
+    %% k-space trajectory calculation and plot
+    [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
+    figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
+    axis('equal'); % enforce aspect ratio for the correct trajectory display
+    hold;plot(ktraj_adc(1,:),ktraj_adc(2,:),'r.'); % plot the sampling points
+    title('full k-space trajectory (k_x x k_y)');
+    
+    %% Optional slow step, but useful for testing during development,
+    % e.g., for the real TE, TR or for staying within slewrate limits
+    rep = seq.testReport;
+    fprintf([rep{:}]);
+end

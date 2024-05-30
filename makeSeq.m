@@ -73,7 +73,7 @@ pyCmd = sprintf('python %s %d %d %d %d %d %d', ...
     pyFile, Ny, Nz, Ry, Rz, CaipiShiftZ, 1);
 
 % try to call Python script from Matlab
-pyenv(ExecutionMode="InProcess");
+pyenv(ExecutionMode="OutOfProcess");
 [status, cmdout] = system(pyCmd, 'LD_PRELOAD', '/lib/x86_64-linux-gnu/libstdc++.so.6');
 if status == 1 % if failed
     fprintf(cmdout);
@@ -100,9 +100,9 @@ sliceSep = fov(3)/mb;   % center-to-center separation between SMS slices (m)
     'ftype', 'ls');       % filter design. 'ls' = least squares
 
 % Doesn't work because unable to run python for some reason
-% [rf, gzRF, gzr, delay] = mr.makeSLRpulse(alpha,'sliceThickness',slThick,...
-%                                       'timeBwProduct',rfTB,'duration',rfDur,...
-%                                       'system', sys);
+[rf, gzRF, gzr, delay] = mr.makeSLRpulse(alpha,'sliceThickness',slThick,...
+                                      'timeBwProduct',rfTB,'duration',rfDur,...
+                                      'system', sys);
 
 %% Fat sat pulse (TODO!!!)
 
