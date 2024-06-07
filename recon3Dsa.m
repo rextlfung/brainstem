@@ -26,7 +26,7 @@ Ncoils = 32;
 
 % Filenames and options
 fn_cal = '/mnt/storage/rexfung/20240604brainstem3DEPI/scanArchives/3DEPI_cal/data.h5';
-fn_loop = '/mnt/storage/rexfung/20240604brainstem3DEPI/scanArchives/3DEPI_loop_v2/data.h5';
+fn_loop = '/mnt/storage/rexfung/20240604brainstem3DEPI/scanArchives/3DEPI_loop_v1/data.h5';
 fn_adc = sprintf('adc/P%dadc.mod', Nx);
 doSENSE = false;
 
@@ -93,10 +93,10 @@ if true
 end
 
 %% Prepare for reconstruction
-% Estimate k-space center offset due to gradient delay
+% Estimate k-space center offset due to gradient delay using the first halfo
 [M, I] = max(abs(ksp_cal),[],1);
 I = squeeze(I);
-delay = mean(I(1:Ny/2,:),'all') - Nfid/2;     
+delay = mean(I(1:Ny/2,:),'all') - Nfid/2; % use the 1st half of each shot
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -163,7 +163,6 @@ else % root sum of squares combination
     imgs = sqrt(sum(abs(imgs_mc).^2, 5));
 end
 
-return;
 %% Viz
 z = 2;
 figure; im(imgs(:,:,z,:),'cbar')
