@@ -17,7 +17,6 @@
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
 
-doDetailedCheck = false;
 %% Define experimental parameters
 sys = mr.opts('maxGrad', 40, 'gradUnit','mT/m', ...
               'maxSlew', 120, 'slewUnit', 'T/m/s', ...
@@ -34,11 +33,11 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 
 % Basic parameters
 Nx = 200; Ny = Nx; Nz = 3;          % Matrix sizes
-fov = [Nx, Ny, 3]*1e-3;             % field of view
+fov = [200, 200, 3]*1e-3;           % field of view
 Nsegments = 4;                      % number of segments in EPI readout
 
 % Basic temporal parameters
-Nframes = 2;                        % number of temporal frames (image volumes)
+Nframes = 1;                        % number of temporal frames (image volumes)
 Ndummyframes = 4;                   % dummy frames to reach steady state
 
 % CAIPI sampling parameters
@@ -56,7 +55,7 @@ dwell = 4e-6;                       % ADC sample time (s). For GE, must be multi
 TE = 30e-3;                         % echo time (s)
 volumeTR = 1000e-3;                 % temporal frame rate (s)
 zTR = volumeTR/Nz;                  % time to acquire a "slice" or z (s)
-TR = zTR/Nsegments;            % time between excitations (s)
+TR = zTR/Nsegments;                 % time between excitations (s)
 T1 = 1500e-3;                       % T1 (s)
 
 % Excitation stuff
@@ -96,7 +95,9 @@ kyStep = diff(kyInds);
 kzStep = diff(kzInds);
 
 %% Excitation pulse
-mb = 1; % just to reuse Jon's SMS pulseq function for volume excitation
+% Reusing Jon's SMS pulseq function for volume excitation
+mb = 1;
+slThick = fov(3);
 sliceSep = fov(3)/mb;   % center-to-center separation between SMS slices (m)
 [rf, gzRF, freq] = getsmspulse(alpha, slThick, rfTB, rfDur, ...
     mb, sliceSep, sysGE, sys, ...
@@ -292,15 +293,16 @@ system('tar -xvf brainstemEPI3D.tar')
 figure; toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
 
 %% Detailed check that takes some time to run
+doDetailedCheck = false;
 if doDetailedCheck
-    %% k-space trajectory calculation and plot
+    % k-space trajectory calculation and plot
     [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
     figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
     axis('equal'); % enforce aspect ratio for the correct trajectory display
     hold;plot(ktraj_adc(1,:),ktraj_adc(2,:),'r.'); % plot the sampling points
     title('full k-space trajectory (k_x x k_y)');
     
-    %% Optional slow step, but useful for testing during development,
+    % Optional slow step, but useful for testing during development,
     % e.g., for the real TE, TR or for staying within slewrate limits
     rep = seq.testReport;
     fprintf([rep{:}]);
