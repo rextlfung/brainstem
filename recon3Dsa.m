@@ -26,21 +26,30 @@ Ncoils = 32;
 
 % Filenames and options
 fn_cal = '/mnt/storage/rexfung/20240604brainstem3DEPI/scanArchives/3DEPI_cal/data.h5';
-fn_loop = '/mnt/storage/rexfung/20240604brainstem3DEPI/scanArchives/3DEPI_loop_v1/data.h5';
+fn_loop = '/mnt/storage/rexfung/20240604brainstem3DEPI/scanArchives/3DEPI_loop_v2/data.h5';
 fn_adc = sprintf('adc/P%dadc.mod', Nx);
 doSENSE = false;
 
 %% Data loading
 % Load raw data from scan archives (takes some time)
-mode = 1;
+mode = 2;
 switch mode
-    case 1
+    case 1 % Depends on GE Orchestra
         ksp_raw_cal = toppe.utils.loadsafile(fn_cal,'acq_order',true);
         ksp_raw = toppe.utils.loadsafile(fn_loop,'acq_order',true);
-    case 2
+    case 2 % Independent of GE Orchestra
         ksp_raw_cal = read_arc(fn_cal);
         ksp_raw = read_arc(fn_loop);
+
+        % permute the data into the same form as case 1
+        ksp_raw_cal = permute(squeeze(ksp_raw_cal),[2,4,1,3]);
+        ksp_raw = permute(squeeze(ksp_raw),[2,4,1,3]);
+
+        % discard 1st frame as it is empty
+        ksp_raw_cal = ksp_raw_cal(:,:,(Ny*Nz + 1):end);
+        ksp_raw = ksp_raw(:,:,(Ny*Nz + 1):end);
 end
+
 %% Preprocessing
 % Print max real and imag parts to check for reasonable magnitude
 fprintf('Max real part: %d\n', max(real(ksp_raw(:))))
@@ -91,6 +100,7 @@ if true
         imgs_naive(:,:,:,frame) = sqrt(sum(abs(img_frame_mc).^2,4));
     end
 end
+delete(gcp('nocreate'));
 
 %% Prepare for reconstruction
 % Estimate k-space center offset due to gradient delay using the first halfo
@@ -108,7 +118,7 @@ oephase_data = ksp_cal;
 oephase_data(:,1:2:end,:,:) = flip(oephase_data(:,1:2:end,:,:),1); % Simulate 1-shot EPI
 oephase_data = hmriutils.epi.rampsampepi2cart(oephase_data, kxo, kxe, Nx, fov(1)*100, 'nufft');
 oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data, [Nx, Ny, Nz*Ncoils])),Nx,1));
-[a, th] = hmriutils.epi.getoephase(oephase_data,true);
+[a, th] = hmriutils.epi.getoephase(oephase_data,false);
 fprintf('Constant phase offset (radians): %f\n', a(1));
 fprintf('Linear term (radians/fov): %f\n', a(2));
 
@@ -131,10 +141,9 @@ parfor frame = 1:Nframes
     % Allocate
     ksp_mc(:,:,:,frame,:) = ksp_frame;
 end
-
+delete(gcp('nocreate'));
 %% Get sensitivity maps with PISCO
 if doSENSE
-    addpath('pisco/');
     ksp4maps = squeeze(ksp(:,:,:,2,:));
     ksp4maps = ifftshift(ifft(fftshift(ksp4maps),Nz,3));
     smaps = zeros(Nx, Ny, Nz, Ncoils);
@@ -168,3 +177,19 @@ z = 2;
 figure; im(imgs(:,:,z,:),'cbar')
 title(fn_loop(1:end-2));
 % saveas(gcf, strcat('figs/',fn(1:end-2),'.png'));
+
+
+%% Make GIF (using the gif add-on)
+volumeTR = 1; % seconds
+clims = [min(imgs(:)), max(imgs(:))]; % Set the same dynamic range for each frame
+imgs_movie = permute(imgs,[2 1 3 4]);
+imgs_movie = flip(imgs_movie,2);
+
+canvas = figure('WindowState','maximized');
+sgtitle(fn_loop(1:end-2));
+im('col',Nz,imgs_movie(:,:,:,1),clims,'cbar');
+gif('movie.gif','DelayTime',volumeTR);
+for frame = 2:Nframes
+    im('col',Nz,imgs_movie(:,:,:,frame),clims,'cbar');
+    gif;
+end
