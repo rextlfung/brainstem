@@ -38,12 +38,11 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
     'maxRF', 0.25);
 
 % Basic parameters
-Nx = 200; Ny = Nx; Nz = 3;          % Matrix sizes
-fov = [200, 200, 3]*1e-3;           % field of view
+fov = [200, 200, 5]*1e-3;           % field of view
+Nx = 200; Ny = Nx; Nz = 10;          % Matrix sizes
 Nsegments = 4;                      % number of segments in EPI readout
 
 % Basic temporal parameters
-Nframes = 1;                        % number of temporal frames (image volumes)
 Ndummyframes = 4;                   % dummy frames to reach steady state
 
 % CAIPI sampling parameters
@@ -59,7 +58,7 @@ dwell = 4e-6;                       % ADC sample time (s). For GE, must be multi
 
 % Decay parameters
 TE = 30e-3;                         % echo time (s)
-volumeTR = 1000e-3;                 % temporal frame rate (s)
+volumeTR = Nz*300e-3;                  % temporal frame rate (s)
 zTR = volumeTR/Nz;                  % time to acquire a "slice" or z (s)
 TR = zTR/Nsegments;                 % time between excitations (s)
 T1 = 1500e-3;                       % T1 (s)
@@ -162,7 +161,7 @@ gyPre = mr.makeTrapezoid('y', sys, ...
     'Area', (kyInds(1)-Ny/2)*deltak(2), ... 
     'Duration', Tpre);
 gzPre = mr.makeTrapezoid('z', sys, ...
-    'Area', -Nz/2*deltak(3), ... 
+    'Area', -1/2*deltak(3), ...
     'Duration', Tpre);
 gxSpoil = mr.makeTrapezoid('x', sys, ...
     'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1));
