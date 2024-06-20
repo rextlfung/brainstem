@@ -13,3 +13,5 @@
 *.dat
 *.cfg
 *.gif
+*.param
+*.h5

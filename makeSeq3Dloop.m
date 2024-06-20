@@ -37,10 +37,10 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
     'maxRF', 0.25);
 
 % Basic parameters
-fov = [200, 200, 5]*1e-3;           % field of view
+fov = [200, 200, 10]*1e-3;           % field of view
 Nx = 200; Ny = Nx; Nz = 10;         % acquisition sizes
 Nsegments = 4;                      % number of segments in EPI readout
-Nframes = 40/Nsegments/Nz;          % number of temporal frames to complete one RF spoil cycle
+Nframes = 5;          % number of temporal frames to complete one RF spoil cycle
 
 % CAIPI sampling parameters
 Ry = 1;                             % ky undersampling factor

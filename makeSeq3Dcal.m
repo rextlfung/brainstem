@@ -38,8 +38,8 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
     'maxRF', 0.25);
 
 % Basic parameters
-fov = [200, 200, 5]*1e-3;           % field of view
-Nx = 200; Ny = Nx; Nz = 10;          % Matrix sizes
+fov = [200, 200, 4]*1e-3;           % field of view
+Nx = 200; Ny = Nx; Nz = 1;          % Matrix sizes
 Nsegments = 4;                      % number of segments in EPI readout
 
 % Basic temporal parameters
@@ -58,7 +58,7 @@ dwell = 4e-6;                       % ADC sample time (s). For GE, must be multi
 
 % Decay parameters
 TE = 30e-3;                         % echo time (s)
-volumeTR = Nz*300e-3;                  % temporal frame rate (s)
+volumeTR = Nz*300e-3;               % temporal frame rate (s)
 zTR = volumeTR/Nz;                  % time to acquire a "slice" or z (s)
 TR = zTR/Nsegments;                 % time between excitations (s)
 T1 = 1500e-3;                       % T1 (s)

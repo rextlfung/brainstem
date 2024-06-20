@@ -1,6 +1,6 @@
 %% Reconstruction code using scan archives instead of p-files
 % Requires GE Orchestra
-% Rex Fung, June 6th, 2024
+% Rex Fung, June 17th, 2024
 
 %% User-defined values (CHANGE THESE)
 % Scanner system info
@@ -18,15 +18,15 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
     'maxRF', 0.25);
 
 % Redefine parameters for convenience
-fov = [200, 200, 5]*1e-3;
+fov = [200, 200, 10]*1e-3;
 Nx = 200; Ny = Nx; Nz = 10;
 Nsegments = 4;
-Nframes = 40/Nz/Nsegments;
+Nframes = 5;
 Ncoils = 32;
 
 % Filenames and options
-fn_cal = '/mnt/storage/rexfung/20240612_EPI/3DEPI_cal/data.h5';
-fn_loop = '/mnt/storage/rexfung/20240612_EPI/3DEPI_loop/data.h5';
+fn_cal = '/mnt/storage/rexfung/20240618epi/cal.h5';
+fn_loop = '/mnt/storage/rexfung/20240618epi/loop.h5';
 fn_adc = sprintf('adc/P%dadc.mod', Nx);
 showEPIphaseDiff = false;
 doSENSE = false;
@@ -47,8 +47,8 @@ switch mode
         ksp_raw = permute(squeeze(ksp_raw),[2,4,1,3]);
 
         % discard leading empty data
-        ksp_raw_cal = ksp_raw_cal(:,:,size(ksp_raw_cal,3):end);
-        ksp_raw = ksp_raw(:,:,size(ksp_raw,3):end);
+        ksp_raw_cal = ksp_raw_cal(:,:,(size(ksp_raw_cal,3) + 1):end);
+        ksp_raw = ksp_raw(:,:,(size(ksp_raw,3) + 1):end);
 end
 
 %% Preprocessing
@@ -86,10 +86,7 @@ for seg = 1:Nsegments
 end
 ksp_cal = ksp_cal_reordered;
 ksp_rampsamp = ksp_rampsamp_reordered;
-clear tmp1 tmp2 ksp_cal_reordered ksp_rampsamp_reordered;
-
-% Combine y and z dimensions as blips are off for cal data
-ksp_cal = reshape(ksp_cal, [Nfid, Ny, Nz*Ncoils]);
+clear tmp1 tmp2 ksp_rampsamp_reordered;
 
 % Naively recon each frame individually to quickly check
 if false
@@ -106,8 +103,7 @@ end
 % Estimate k-space center offset due to gradient delay using the first half
 [M, I] = max(abs(ksp_cal),[],1);
 I = squeeze(I);
-delay = mean(I(1:Ny/2,:),'all') - Nfid/2; % use the 1st half of each shot
-delay = 0;
+delay = Nfid/2 - mean(I(1:Ny/10,:),'all'); % use the first 10% of echoes
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -142,7 +138,6 @@ parfor frame = 1:Nframes
     % Allocate
     ksp_mc(:,:,:,frame,:) = ksp_frame;
 end
-delete(gcp('nocreate'));
 
 %% Get sensitivity maps with PISCO
 if doSENSE
@@ -176,7 +171,7 @@ end
 
 %% Viz
 z = ceil(Nz/2);
-figure; im(imgs(:,:,:,1),'cbar')
+figure; im(imgs(:,:,:,5),'cbar')
 title(fn_loop(1:end-3));
 % saveas(gcf, strcat('figs/',fn(1:end-2),'.png'));
 
