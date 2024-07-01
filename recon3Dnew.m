@@ -6,13 +6,13 @@
 setGREparams; setEPIparams;
 
 % Params defined at scan
-Nloops = 4; % What you set toppe CV 8 to when running the scan
+Nloops = 1; % What you set toppe CV 8 to when running the scan
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames and options
-fn_smaps = '/mnt/storage/rexfung/20240630epi/gre.h5';
-fn_cal = '/mnt/storage/rexfung/20240630epi/cal.h5';
-fn_loop = '/mnt/storage/rexfung/20240630epi/loop.h5';
+fn_smaps = '/mnt/storage/rexfung/20240701epi_outside/gre.h5';
+fn_cal = '/mnt/storage/rexfung/20240701epi_outside/cal.h5';
+fn_loop = '/mnt/storage/rexfung/20240701epi_outside/loop.h5';
 fn_adc = sprintf('adc/P%dadc.mod',Nx);
 showEPIphaseDiff = true;
 doSENSE = true;
@@ -22,6 +22,7 @@ doSENSE = true;
 mode = 2;
 switch mode
     case 1 % Depends on GE Orchestra
+        ksp_raw_smaps = toppe.utils.loadsafile(fn_smaps,'acq_order',true);
         ksp_raw_cal = toppe.utils.loadsafile(fn_cal,'acq_order',true);
         ksp_raw = toppe.utils.loadsafile(fn_loop,'acq_order',true);
     case 2 % Independent of GE Orchestra
@@ -48,8 +49,8 @@ fprintf('Max imag part: %d\n', max(imag(ksp_raw(:))))
 if doSENSE
     ksp_smaps = flip(ksp_raw_smaps, 1); % tv6 flips data along FID direction
     [Nfid,Ncoils,N] = size(ksp_smaps);
-    ksp_smaps = ksp_smaps(:,:,1:Ny_smaps*Nz_smaps); % discard trailing data
-    ksp_smaps = reshape(ksp_smaps,Nx_smaps,Ncoils,Ny_smaps,Nz_smaps);
+    ksp_smaps = ksp_smaps(:,:,1:Ny_gre*Nz_gre); % discard trailing data
+    ksp_smaps = reshape(ksp_smaps,Nx_gre,Ncoils,Ny_gre,Nz_gre);
     ksp_smaps = permute(ksp_smaps,[1 3 4 2]); % [Nx Ny Nz Ncoils]
 end
 
@@ -73,7 +74,7 @@ cal_data = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Nz*Ncoils);
 cal_data(:,2:2:end) = flip(cal_data(:,2:2:end),1);
 [M, I] = max(cal_data,[],1);
 I = squeeze(I);
-delay = mean(I,'all') - Nfid/2; delay = -1.5;
+delay = mean(I,'all') - Nfid/2; delay = -2.5;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -120,16 +121,16 @@ end
 
 %% Get sensitivity maps with PISCO
 if doSENSE
-    ksp_smaps = ifftshift(ifft(fftshift(ksp_smaps),Nz_smaps,3));
-    smaps = zeros(Nx_smaps, Ny_smaps, Nz_smaps, Ncoils);
-    for z = 1:Nz_smaps
+    ksp_smaps = ifftshift(ifft(fftshift(ksp_smaps),Nz_gre,3));
+    smaps = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
+    for z = 1:Nz_gre
         [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(squeeze(ksp_smaps(:,:,z,:)),...
-                                    [Nx_smaps, Ny_smaps]);
+                                    [Nx_gre, Ny_gre]);
     end
 
     % Crop in z to match EPI FoV
-    z_start = (fov_smaps(3) - fov(3))/fov_smaps(3)/2*Nz_smaps + 1;
-    z_end = Nz_smaps - (fov_smaps(3) - fov(3))/fov_smaps(3)/2*Nz_smaps;
+    z_start = round((fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre + 1);
+    z_end = round(Nz_gre - (fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre);
     smaps = smaps(:,:,z_start:z_end,:);
 
     % Interpolate to match EPI data dimensions

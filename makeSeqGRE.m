@@ -83,7 +83,7 @@ for iZ = -nDummyZLoops:Nz_gre
     for ii = 1:length(lastmsg)
         fprintf('\b');
     end
-    msg = sprintf('z encode %d of %d   ', iZ, Nz_gre);
+    msg = sprintf('z encode %d of %d ', iZ, Nz_gre);
     fprintf(msg);
     lastmsg = msg;
 

@@ -54,15 +54,12 @@ kyStep = diff(kyInds);
 kzStep = diff(kzInds);
 
 %% Excitation pulse
-% Reusing Jon's SMS pulseq function for volume excitation
-mb = 1;
-slThick = fov(3);
-sliceSep = fov(3)/mb;   % center-to-center separation between SMS slices (m)
-[rf, gzRF, freq] = getsmspulse(alpha, slThick, rfTB, rfDur, ...
-    mb, sliceSep, sysGE, sys, ...
-    'doSim', false, ...    % Plot simulated SMS slice profile
-    'type', 'st', ...     % SLR choice. 'ex' = 90 excitation; 'st' = small-tip
-    'ftype', 'ls');       % filter design. 'ls' = least squares
+[rf, gzSS, gzSSR] = mr.makeSincPulse(alpha/180*pi,...
+                                     'duration',rfDur,...
+                                     'sliceThickness',fov(3),...
+                                     'system',sys);
+gzSS = trap4ge(gzSS,CRT,sys);
+gzSSR = trap4ge(gzSSR,CRT,sys);
 
 %% Fat-sat
 fatsat.flip    = 90;      % degrees
@@ -189,8 +186,11 @@ for frame = -Ndummyframes:0
             rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
             rf_phase = mod(rf_phase+rf_inc, 360.0);
     
-            % RF excitation
-            seq.addBlock(rf,gzRF);
+            % "Slice" selective RF excitation
+            seq.addBlock(rf,gzSS);
+
+            % Rephase
+            seq.addBlock(gzSSR);
     
             % TE delay
             if TE > minTE

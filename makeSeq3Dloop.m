@@ -53,15 +53,12 @@ kyStep = diff(kyInds);
 kzStep = diff(kzInds);
 
 %% Excitation pulse
-% Reusing Jon's SMS pulseq function for volume excitation
-mb = 1;
-slThick = fov(3);
-sliceSep = fov(3)/mb;   % center-to-center separation between SMS slices (m)
-[rf, gzRF, freq] = getsmspulse(alpha, slThick, rfTB, rfDur, ...
-    mb, sliceSep, sysGE, sys, ...
-    'doSim', false, ...    % Plot simulated SMS slice profile
-    'type', 'st', ...     % SLR choice. 'ex' = 90 excitation; 'st' = small-tip
-    'ftype', 'ls');       % filter design. 'ls' = least squares
+[rf, gzSS, gzSSR] = mr.makeSincPulse(alpha/180*pi,...
+                                     'duration',rfDur,...
+                                     'sliceThickness',fov(3),...
+                                     'system',sys);
+gzSS = trap4ge(gzSS,CRT,sys);
+gzSSR = trap4ge(gzSSR,CRT,sys);
 
 %% Fat-sat
 fatsat.flip    = 90;      % degrees
@@ -144,14 +141,16 @@ gzSpoil = trap4ge(mr.makeTrapezoid('z', sys, ...
 
 %% Calculate delay to achieve desired TE
 kyIndAtTE = find(kyInds-Ny/2/Nsegments == min(abs(kyInds-Ny/2/Nsegments)));
-minTE = mr.calcDuration(gzRF) - mr.calcDuration(rf)/2 - rf.delay + ...
-        mr.calcDuration(gxPre) + ...
-        (kyIndAtTE-0.5) * mr.calcDuration(gro);
+minTE = mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
+      - mr.calcDuration(rf)/2 - rf.delay...
+      + mr.calcDuration(gxPre)...
+      + (kyIndAtTE-0.5) * mr.calcDuration(gro);
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(gzRF) + mr.calcDuration(gzPre)...
-                + Ny/Nsegments*mr.calcDuration(gro) + mr.calcDuration(gzSpoil);
+minTR = mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
+      + mr.calcDuration(gzPre) + Ny/Nsegments*mr.calcDuration(gro)...
+      + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 
 %% Assemble sequence
@@ -188,8 +187,11 @@ for frame = 1:NframesPerLoop
             rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
             rf_phase = mod(rf_phase+rf_inc, 360.0);
     
-            % RF excitation
-            seq.addBlock(rf,gzRF);
+            % "Slice" selective RF excitation
+            seq.addBlock(rf,gzSS);
+
+            % Rephase
+            seq.addBlock(gzSSR);
     
             % TE delay
             if TE > minTE
