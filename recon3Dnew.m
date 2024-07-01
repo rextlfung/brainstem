@@ -2,39 +2,20 @@
 % Requires GE Orchestra
 % Rex Fung, June 17th, 2024
 
-%% User-defined values (CHANGE THESE)
-% Scanner system info
-sys = mr.opts('maxGrad', 40, 'gradUnit','mT/m', ...
-              'maxSlew', 120, 'slewUnit', 'T/m/s', ...
-              'rfDeadTime', 100e-6, ...
-              'rfRingdownTime', 60e-6, ...
-              'adcDeadTime', 20e-6, ...
-              'adcRasterTime', 2e-6, ...
-              'gradRasterTime', 10e-6, ...
-              'blockDurationRaster', 10e-6, ...
-              'B0', 3.0);
-sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
-    'maxSlew', sys.maxSlew/sys.gamma/10, ...           % G/cm/ms
-    'maxRF', 0.25);
+%% Load in params
+setGREparams; setEPIparams;
 
-% Redefine parameters for convenience
-fov = [200, 200, 10]*1e-3;
-Nx = 200; Ny = Nx; Nz = 10;
-Nsegments = 4;
-Nframes = 5;
-Ncoils = 32;
-
-% Different params for smaps data
-fov_smaps = [200,200,20]*1e-3;
-Nx_smaps = 100; Ny_smaps = 100; Nz_smaps = 10; N_echoes = 2;
+% Params defined at scan
+Nloops = 4; % What you set toppe CV 8 to when running the scan
+Nframes = Nloops*NframesPerLoop;
 
 % Filenames and options
-fn_smaps = '/mnt/storage/rexfung/20240618epi/b0.h5';
-fn_cal = '/mnt/storage/rexfung/20240618epi/cal.h5';
-fn_loop = '/mnt/storage/rexfung/20240618epi/loop.h5';
-fn_adc = sprintf('adc/P%dadc.mod', Nx);
-showEPIphaseDiff = false;
-doSENSE = false;
+fn_smaps = '/mnt/storage/rexfung/20240630epi/gre.h5';
+fn_cal = '/mnt/storage/rexfung/20240630epi/cal.h5';
+fn_loop = '/mnt/storage/rexfung/20240630epi/loop.h5';
+fn_adc = sprintf('adc/P%dadc.mod',Nx);
+showEPIphaseDiff = true;
+doSENSE = true;
 
 %% Data loading
 % Load raw data from scan archives (takes some time)
@@ -44,11 +25,9 @@ switch mode
         ksp_raw_cal = toppe.utils.loadsafile(fn_cal,'acq_order',true);
         ksp_raw = toppe.utils.loadsafile(fn_loop,'acq_order',true);
     case 2 % Independent of GE Orchestra
-        if doSENSE
-            ksp_raw_smaps = read_archive(fn_smaps);
-            ksp_raw_cal = read_archive(fn_cal);
-            ksp_raw = read_archive(fn_loop);
-        end
+        ksp_raw_smaps = read_archive(fn_smaps);
+        ksp_raw_cal = read_archive(fn_cal);
+        ksp_raw = read_archive(fn_loop);
 
         % permute the data into the same form as case 1
         ksp_raw_smaps = permute(squeeze(ksp_raw_smaps),[2,4,1,3]);
@@ -56,7 +35,7 @@ switch mode
         ksp_raw = permute(squeeze(ksp_raw),[2,4,1,3]);
 
         % discard leading empty data
-        ksp_raw_smaps = ksp_raw_smaps(:,:,(size(ksp_raw_smaps,3) + 1):end);
+        ksp_raw_smaps = ksp_raw_smaps(:,:,(2*size(ksp_raw_smaps,3) + 1):end); % and cal data
         ksp_raw_cal = ksp_raw_cal(:,:,(size(ksp_raw_cal,3) + 1):end);
         ksp_raw = ksp_raw(:,:,(size(ksp_raw,3) + 1):end);
 end
@@ -67,8 +46,7 @@ fprintf('Max real part: %d\n', max(real(ksp_raw(:))))
 fprintf('Max imag part: %d\n', max(imag(ksp_raw(:))))
 
 if doSENSE
-    ksp_smaps = ksp_raw_smaps(:,:,1:N_echoes:end); % extract 1st TE from B0 mapping data
-    ksp_smaps = flip(ksp_smaps, 1); % tv6 flips data along FID direction
+    ksp_smaps = flip(ksp_raw_smaps, 1); % tv6 flips data along FID direction
     [Nfid,Ncoils,N] = size(ksp_smaps);
     ksp_smaps = ksp_smaps(:,:,1:Ny_smaps*Nz_smaps); % discard trailing data
     ksp_smaps = reshape(ksp_smaps,Nx_smaps,Ncoils,Ny_smaps,Nz_smaps);
@@ -91,27 +69,31 @@ ksp_rampsamp = permute(ksp_rampsamp,[1 3 4 5 6 2]); % [Nfid Ny/Nsegments Nsegmen
 
 %% Prepare for reconstruction
 % Estimate k-space center offset due to gradient delay
-tmp = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Nz*Ncoils);
-tmp(:,1:2:end,:) = flip(tmp(:,1:2:end,:),1);
-[M, I] = max(tmp,[],1); I = squeeze(I);
-delay = mean(diff(I,1,1),'all');
+cal_data = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Nz*Ncoils);
+cal_data(:,2:2:end) = flip(cal_data(:,2:2:end),1);
+[M, I] = max(cal_data,[],1);
+I = squeeze(I);
+delay = mean(I,'all') - Nfid/2; delay = -1.5;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
 [rf,gx,gy,gz,desc,paramsint16,pramsfloat,hdr] = toppe.readmod(fn_adc);
 [kxo, kxe] = toppe.utils.getk(sysGE, fn_adc, Nfid, delay);
 
+% Extract even number of lines (in case ETL is odd)
+ETL_even = size(ksp_cal,2) - mod(size(ksp_cal,2),2);
+oephase_data = ksp_cal(:,1:ETL_even,:,:,:);
+
 % EPI ghost correction phase offset values
-oephase_data = ksp_cal;
 oephase_data = hmriutils.epi.rampsampepi2cart(oephase_data, kxo, kxe, Nx, fov(1)*100, 'nufft');
-oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,Ny/Nsegments,Nsegments*Nz*Ncoils)),Nx,1));
+oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,ETL_even,Nsegments*Nz*Ncoils)),Nx,1));
 [a, th] = hmriutils.epi.getoephase(oephase_data,showEPIphaseDiff);
 fprintf('Constant phase offset (radians): %f\n', a(1));
 fprintf('Linear term (radians/fov): %f\n', a(2));
 
 %% Reconstruct multicoil k-space (each frame individually)
 
-ksp_mc = zeros(Nx,Ny/Nsegments,Nsegments,Nz,Nframes,Ncoils);
+ksp_cart = zeros(Nx,Ny/Nsegments,Nsegments,Nz,Nframes,Ncoils); 
 parfor frame = 1:Nframes
     fprintf('Reconstructing multicoil k-space of frame %d\n', round(frame))
 
@@ -121,31 +103,34 @@ parfor frame = 1:Nframes
     % grid
     ksp_frame = hmriutils.epi.rampsampepi2cart(ksp_rampsamp_frame, kxo, kxe, Nx, fov(1)*100, 'nufft');
 
+    % phase correct
+    ksp_frame = hmriutils.epi.epiphasecorrect(ksp_frame, a);
+
     % Allocate
-    ksp_mc(:,:,:,:,frame,:) = ksp_frame;
+    ksp_cart(:,:,:,:,frame,:) = ksp_frame;
 end
 
 %% Rearrange segments/shots into proper locations
-ksp_mc_reordered = zeros(Nx,Ny,Nz,Nframes,Ncoils);
+ksp_mc = zeros(Nx,Ny,Nz,Nframes,Ncoils);
 for seg = 1:Nsegments
-    tmp = squeeze(ksp_mc(:,:,seg,:,:,:));
-    ksp_mc_reordered(:,seg:Nsegments:end,:,:,:) = tmp;
+    tmp = squeeze(ksp_cart(:,:,seg,:,:,:));
+    % tmp(:,1:2:end,:,:) = flip(tmp(:,1:2:end,:,:),1);
+    ksp_mc(:,seg:Nsegments:end,:,:,:) = tmp;
 end
-ksp_mc = ksp_mc_reordered;
-clear tmp ksp_mc_reordered;
 
 %% Get sensitivity maps with PISCO
 if doSENSE
     ksp_smaps = ifftshift(ifft(fftshift(ksp_smaps),Nz_smaps,3));
     smaps = zeros(Nx_smaps, Ny_smaps, Nz_smaps, Ncoils);
     for z = 1:Nz_smaps
-        [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(squeeze(ksp_smaps(:,:,z,:)), [Nx_smaps, Ny_smaps]);
-        
+        [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(squeeze(ksp_smaps(:,:,z,:)),...
+                                    [Nx_smaps, Ny_smaps]);
     end
 
     % Crop in z to match EPI FoV
-    z_range = ceil(Nz_smaps*fov(3)/fov_smaps(3)/2):floor(Nz_smaps*fov(3)/fov_smaps(3)*3/2);
-    smaps = smaps(:,:,z_range,:);
+    z_start = (fov_smaps(3) - fov(3))/fov_smaps(3)/2*Nz_smaps + 1;
+    z_end = Nz_smaps - (fov_smaps(3) - fov(3))/fov_smaps(3)/2*Nz_smaps;
+    smaps = smaps(:,:,z_start:z_end,:);
 
     % Interpolate to match EPI data dimensions
     smaps_new = zeros(Nx,Ny,Nz,Ncoils);
@@ -170,25 +155,29 @@ imgs_mc = ifftshift(ifft(...
 
 %% Coil combination
 if doSENSE
-    imgs = sum(imgs_mc .* conj(smaps), 5);
+    img_final = sum(imgs_mc .* conj(smaps), 5);
 else % root sum of squares combination
-    imgs = sqrt(sum(abs(imgs_mc).^2, 5));
+    img_final = sqrt(sum(abs(imgs_mc).^2, 5));
 end
+
+%% Compute k-space by IFT3
+ksp_final = toppe.utils.ift3(img_final);
 
 %% Viz
 z = ceil(Nz/2);
 figure('WindowState','maximized');
-im('col',Nz,'row',Nframes,imgs(:,:,:),'cbar')
+im('col',Nframes,'row',Nz,reshape(permute(img_final,[1 2 4 3]),Nx,Ny,Nframes*Nz),'cbar')
 title(fn_loop(1:end-3));
-xlabel('z direction'); ylabel('time')
+ylabel('z direction'); xlabel('time')
+
 % saveas(gcf, strcat('figs/',fn(1:end-2),'.png'));
 
 
 %% Make GIF (using the gif add-on)
 if false
     volumeTR = 1; % seconds
-    clims = [min(imgs(:)), max(imgs(:))]; % Set the same dynamic range for each frame
-    imgs_movie = permute(imgs,[2 1 3 4]);
+    clims = [min(img_final(:)), max(img_final(:))]; % Set the same dynamic range for each frame
+    imgs_movie = permute(img_final,[2 1 3 4]);
     imgs_movie = flip(imgs_movie,2);
     
     close all;

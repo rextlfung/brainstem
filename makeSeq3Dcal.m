@@ -16,62 +16,16 @@
 % see the 'Pulseq on GE' manual.
 %
 % Performance?
-% Low temporal resolution (1s) but
+% Very low temporal resolution (2.6s) but
 % High temporal resolution (1mm isotropic)
+
+%% Define experimental parameters
+setEPIparams;
+
 %% Path and options
 seqname = '3DEPImultishot_cal';
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
-
-%% Define experimental parameters
-sys = mr.opts('maxGrad', 40, 'gradUnit','mT/m', ...
-              'maxSlew', 120, 'slewUnit', 'T/m/s', ...
-              'rfDeadTime', 100e-6, ...
-              'rfRingdownTime', 60e-6, ...
-              'adcDeadTime', 20e-6, ...
-              'adcRasterTime', 2e-6, ...
-              'gradRasterTime', 10e-6, ...
-              'blockDurationRaster', 10e-6, ...
-              'B0', 3.0);
-sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
-    'maxSlew', sys.maxSlew/sys.gamma/10, ...           % G/cm/ms
-    'maxRF', 0.25);
-
-% Basic parameters
-fov = [200, 200, 4]*1e-3;           % field of view
-Nx = 200; Ny = Nx; Nz = 1;          % Matrix sizes
-Nsegments = 4;                      % number of segments in EPI readout
-
-% Basic temporal parameters
-Ndummyframes = 4;                   % dummy frames to reach steady state
-
-% CAIPI sampling parameters
-Ry = 1;                             % ky undersampling factor
-Rz = 1;                             % kz undersampling factor
-CaipiShiftZ = 2;                    % Caipi shift factor
-pf_ky = 1.0;                        % partial Fourier factor along ky
-etl = ceil(pf_ky*Ny/Ry);            % echo train length
-NcyclesSpoil = 3;                   % number of Gx and Gz spoiler cycles
-
-% ADC stuff
-dwell = 4e-6;                       % ADC sample time (s). For GE, must be multiple of 2us.
-
-% Decay parameters
-TE = 30e-3;                         % echo time (s)
-volumeTR = Nz*300e-3;               % temporal frame rate (s)
-zTR = volumeTR/Nz;                  % time to acquire a "slice" or z (s)
-TR = zTR/Nsegments;                 % time between excitations (s)
-T1 = 1500e-3;                       % T1 (s)
-
-% Excitation stuff
-alpha = 180/pi * acos(exp(-TR/T1)); % Ernst angle (degrees)
-rfDur = 8e-3;                       % RF pulse duration (s)
-rfTB  = 6;                          % RF pulse time-bandwidth product
-rfSpoilingInc = 117;                % RF spoiling increment (degrees)
-
-% Fat Sat Stuff
-fatChemShift = 3.5*1e-6;                        % 3.5 ppm
-fatOffresFreq = sys.gamma*sys.B0*fatChemShift;  % Hz
 
 %% Get CAIPI sampling pattern (for one shot/echo train)
 
@@ -110,7 +64,28 @@ sliceSep = fov(3)/mb;   % center-to-center separation between SMS slices (m)
     'type', 'st', ...     % SLR choice. 'ex' = 90 excitation; 'st' = small-tip
     'ftype', 'ls');       % filter design. 'ls' = least squares
 
-%% Fat sat pulse (TODO!!!)
+%% Fat-sat
+fatsat.flip    = 90;      % degrees
+fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
+fatsat.tbw     = 3.5;     % time-bandwidth product
+fatsat.dur     = 8.0;     % pulse duration (ms)
+% RF waveform in Gauss
+wav = toppe.utils.rf.makeslr(fatsat.flip, fatsat.slThick, fatsat.tbw, fatsat.dur, 1e-6, toppe.systemspecs(), ...
+    'type', 'ex', ...    % fatsat pulse is a 90 so is of type 'ex', not 'st' (small-tip)
+    'ftype', 'min', ...
+    'writeModFile', false);
+% Convert from Gauss to Hz, and interpolate to sys.rfRasterTime
+rfp = rf2pulseq(wav, 4e-6, sys.rfRasterTime);
+% Create pulseq object
+% Try to account for the fact that makeArbitraryRf scales the pulse as follows:
+% signal = signal./abs(sum(signal.*opt.dwell))*flip/(2*pi);
+flip_ang = fatsat.flip/180*pi;
+flipAssumed = abs(sum(rfp));
+rfsat = mr.makeArbitraryRf(rfp, ...
+    flip_ang*abs(sum(rfp*sys.rfRasterTime))*(2*pi), ...
+    'system', sys);
+rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure correct amplitude (Hz)
+rfsat.freqOffset = -fatOffresFreq;  % Hz
 
 %% Define readout gradients and ADC event
 % The Pulseq toolbox really shines here!
@@ -118,8 +93,8 @@ sliceSep = fov(3)/mb;   % center-to-center separation between SMS slices (m)
 deltak = 1./fov;
 
 % Start with the blips
-gyBlip = mr.makeTrapezoid('y', sys, 'Area', max(abs(kyStep))*deltak(2)); 
-gzBlip = mr.makeTrapezoid('z', sys, 'Area', max(abs(kzStep))*deltak(3)); 
+gyBlip = trap4ge(mr.makeTrapezoid('y', sys, 'Area', max(abs(kyStep))*deltak(2)),CRT,sys); 
+gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', max(abs(kzStep))*deltak(3)),CRT,sys); 
 
 % Area and duration of the biggest blip
 if gyBlip.area > gzBlip.area
@@ -133,7 +108,7 @@ end
 % Readout trapezoid
 systmp = sys;
 systmp.maxGrad = deltak(1)/dwell;  % to ensure >= Nyquist sampling
-gro = mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea);
+gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,sys);
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
@@ -154,19 +129,19 @@ gzBlipUp.delay = mr.calcDuration(gro) - mr.calcDuration(gzBlip)/2;
 gzBlipDown.delay = 0;
 
 % prephasers and spoilers
-gxPre = mr.makeTrapezoid('x', sys, ...
-    'Area', -gro.area/2);
+gxPre = trap4ge(mr.makeTrapezoid('x', sys, ...
+    'Area', -gro.area/2),CRT,sys);
 Tpre = mr.calcDuration(gxPre);
-gyPre = mr.makeTrapezoid('y', sys, ...
+gyPre = trap4ge(mr.makeTrapezoid('y', sys, ...
     'Area', (kyInds(1)-Ny/2)*deltak(2), ... 
-    'Duration', Tpre);
-gzPre = mr.makeTrapezoid('z', sys, ...
+    'Duration', Tpre),CRT,sys);
+gzPre = trap4ge(mr.makeTrapezoid('z', sys, ...
     'Area', -1/2*deltak(3), ...
-    'Duration', Tpre);
-gxSpoil = mr.makeTrapezoid('x', sys, ...
-    'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1));
-gzSpoil = mr.makeTrapezoid('z', sys, ...
-    'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1));
+    'Duration', Tpre),CRT,sys);
+gxSpoil = trap4ge(mr.makeTrapezoid('x', sys, ...
+    'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1)),CRT,sys);
+gzSpoil = trap4ge(mr.makeTrapezoid('z', sys, ...
+    'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1)),CRT,sys);
 
 %% Calculate delay to achieve desired TE
 kyIndAtTE = find(kyInds-Ny/2/Nsegments == min(abs(kyInds-Ny/2/Nsegments)));
@@ -176,7 +151,7 @@ minTE = mr.calcDuration(gzRF) - mr.calcDuration(rf)/2 - rf.delay + ...
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(gzRF) + mr.calcDuration(gzPre)...
+minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzRF) + mr.calcDuration(gzPre)...
                 + Ny/Nsegments*mr.calcDuration(gro) + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 
@@ -202,9 +177,11 @@ for frame = -Ndummyframes:0
     
         % In plane loop (2D segmented EPI)
         for seg = 1:Nsegments
-            % Label the first block in each segment with the segment ID (see Pulseq on GE manual)
-            % !!This segment ID is NOT to be confused with the EPI segments!!
-            segmentID = 3*seg - (frame <= 0) - (frame == 0);
+            % Label the first block in each segment with the TRID (see Pulseq on GE manual)
+            TRID = 3*seg - (frame <= 0) - (frame == 0);
+            
+            % Fat-sat
+            seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
     
             % RF spoiling
             rf.phaseOffset = rf_phase/180*pi;
@@ -213,7 +190,7 @@ for frame = -Ndummyframes:0
             rf_phase = mod(rf_phase+rf_inc, 360.0);
     
             % RF excitation
-            seq.addBlock(rf, gzRF, mr.makeLabel('SET', 'TRID', segmentID));
+            seq.addBlock(rf,gzRF);
     
             % TE delay
             if TE > minTE
@@ -295,7 +272,8 @@ seq.write(strcat(seqname, '.seq'));
 %% GE stuff
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
-figure; toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
+figure('WindowState','maximized');
+toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
 
 %% Detailed check that takes some time to run
 doDetailedCheck = false;
