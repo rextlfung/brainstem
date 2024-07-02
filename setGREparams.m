@@ -18,8 +18,8 @@ sys = mr.opts('maxGrad', 40, 'gradUnit','mT/m', ...
               'B0', 3.0);
 
 % Spatial parameters (different from EPI scans)
-fov_gre = [180, 180, 36]*1e-3;      % field of view
-Nx_gre = 100; Ny_gre = Nx_gre; Nz_gre = 20; % Matrix size. Make large enough to avoid foldover
+fov_gre = [180, 180, 10]*1e-3;      % field of view
+Nx_gre = 180; Ny_gre = Nx_gre; Nz_gre = 10; % Matrix size. Make large enough to avoid foldover
 
 % Other acquisition params
 dwell = 4e-6;                   % ADC sample time (s)
