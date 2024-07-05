@@ -22,7 +22,7 @@
 setEPIparams;
 
 %% Path and options
-seqname = '3DEPImultishot_loop';
+seqname = '3DEPI_loop';
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
 
@@ -132,7 +132,7 @@ gyPre = trap4ge(mr.makeTrapezoid('y', sys, ...
     'Area', (kyInds(1)-Ny/2)*deltak(2), ... 
     'Duration', Tpre),CRT,sys);
 gzPre = trap4ge(mr.makeTrapezoid('z', sys, ...
-    'Area', -1/2*deltak(3), ...
+    'Area', -Nz/2*deltak(3), ...
     'Duration', Tpre),CRT,sys);
 gxSpoil = trap4ge(mr.makeTrapezoid('x', sys, ...
     'Area', Nx*deltak(1)*NcyclesSpoil * (-1)^(Ny/Nsegments - 1)),CRT,sys);
@@ -171,7 +171,7 @@ for frame = 1:NframesPerLoop
     
     % z-loop (move to proper kz location)
     for z = 1:Nz
-        gzPreTmp = mr.scaleGrad(gzPre,ceil(Nz/2) - z);
+        gzPreTmp = mr.scaleGrad(gzPre,(z - floor(Nz/2))/(Nz/2));
     
         % In plane loop (2D segmented EPI)
         for seg = 1:Nsegments

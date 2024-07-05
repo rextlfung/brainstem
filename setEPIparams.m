@@ -20,7 +20,7 @@ Nsegments = 4;                      % number of segments in EPI readout
 Nshots = Nz*Nsegments;              % number of shots per volume
 
 % Basic temporal parameters
-Ndummyframes = 4;                   % dummy frames to reach steady stat
+Ndummyframes = 4;                   % dummy frames to reach steady state
 NframesPerLoop = lcm(40,Nshots)/Nshots; % number of temporal frames to complete one RF spoil cycle
 
 % CAIPI sampling parameters

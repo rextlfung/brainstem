@@ -25,13 +25,13 @@ Nx_gre = 180; Ny_gre = Nx_gre; Nz_gre = 10; % Matrix size. Make large enough to 
 dwell = 4e-6;                   % ADC sample time (s)
 fatChemShift = 3.5e-6;          % 3.5 ppm
 fatOffresFreq = sys.gamma*sys.B0*fatChemShift;  % Hz
-TE = 1/fatOffresFreq*[1];       % fat and water in phase for both echoes
-TR = 6e-3*[1];                  % constant TR
+TE = 1/fatOffresFreq + 2e-4;    % fat and water in phase for both echoes
+TR = 6e-3;                      % constant TR
 T1 = 1500e-3;                   % approximate T1
 alpha = 180/pi*acos(exp(-TR/T1));  % flip angle (degrees)
 
 % Sequence parameters
-alphaPulseDuration = 0.2e-3;
+rfDur = 0.4e-3;
 rfSpoilingInc = 117;            % RF spoiling increment
 nCyclesSpoil = 2;               % number of spoiler cycles
 Tpre = 1.0e-3;                  % prephasing trapezoid duration

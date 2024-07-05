@@ -6,16 +6,16 @@
 setGREparams; setEPIparams;
 
 % Params defined at scan
-Nloops = 1; % What you set toppe CV 8 to when running the scan
+Nloops = 10; % What you set toppe CV 8 to when running the scan
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames and options
-fn_smaps = '/mnt/storage/rexfung/20240701epi_outside/gre.h5';
-fn_cal = '/mnt/storage/rexfung/20240701epi_outside/cal.h5';
-fn_loop = '/mnt/storage/rexfung/20240701epi_outside/loop.h5';
+fn_smaps = '/mnt/storage/rexfung/20240705epi_fat/gre.h5';
+fn_cal = '/mnt/storage/rexfung/20240705epi_fat/cal.h5';
+fn_loop = '/mnt/storage/rexfung/20240705epi_fat/loop.h5';
 fn_adc = sprintf('adc/P%dadc.mod',Nx);
-showEPIphaseDiff = true;
-doSENSE = true;
+showEPIphaseDiff = false;
+doSENSE = false;
 
 %% Data loading
 % Load raw data from scan archives (takes some time)
@@ -71,10 +71,10 @@ ksp_rampsamp = permute(ksp_rampsamp,[1 3 4 5 6 2]); % [Nfid Ny/Nsegments Nsegmen
 %% Prepare for reconstruction
 % Estimate k-space center offset due to gradient delay
 cal_data = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Nz*Ncoils);
-cal_data(:,2:2:end) = flip(cal_data(:,2:2:end),1);
+% cal_data(:,2:2:end) = flip(cal_data(:,2:2:end),1);
 [M, I] = max(cal_data,[],1);
 I = squeeze(I);
-delay = mean(I,'all') - Nfid/2; delay = -2.5;
+delay = mean(I,'all') - Nfid/2; delay = -1.5;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -121,10 +121,10 @@ end
 
 %% Get sensitivity maps with PISCO
 if doSENSE
-    ksp_smaps = ifftshift(ifft(fftshift(ksp_smaps),Nz_gre,3));
+    tmp = ifftshift(ifft(fftshift(ksp_smaps),Nz_gre,3));
     smaps = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
     for z = 1:Nz_gre
-        [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(squeeze(ksp_smaps(:,:,z,:)),...
+        [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(squeeze(tmp(:,:,z,:)),...
                                     [Nx_gre, Ny_gre]);
     end
 
@@ -164,8 +164,10 @@ end
 %% Compute k-space by IFT3
 ksp_final = toppe.utils.ift3(img_final);
 
+%% Compute GRE images
+img_gre = sqrt(sum(abs(toppe.utils.ift3(ksp_smaps)).^2,4));
+
 %% Viz
-z = ceil(Nz/2);
 figure('WindowState','maximized');
 im('col',Nframes,'row',Nz,reshape(permute(img_final,[1 2 4 3]),Nx,Ny,Nframes*Nz),'cbar')
 title(fn_loop(1:end-3));

@@ -10,8 +10,13 @@ setGREparams;
 % Create a new sequence object
 seq = mr.Sequence(sys);           
 
-% Create non-selective pulse
-[rf] = mr.makeBlockPulse(alpha/180*pi, sys, 'Duration', alphaPulseDuration);
+% Same selective pulse as 3D EPI
+[rf, gzSS, gzSSR] = mr.makeSincPulse(alpha/180*pi,...
+                                     'duration',rfDur,...
+                                     'sliceThickness',fov_gre(3),...
+                                     'system',sys);
+gzSS = trap4ge(gzSS,CRT,sys);
+gzSSR = trap4ge(gzSSR,CRT,sys);
 
 % Define other gradients and ADC events
 % Cut the redaout gradient into two parts for optimal spoiler timing
@@ -25,7 +30,7 @@ gyPre = trap4ge(mr.makeTrapezoid('y', sys, ...
     'Duration', Tpre), ...
     commonRasterTime, sys);
 gzPre = trap4ge(mr.makeTrapezoid('z', sys, ...
-    'Area', Nz_gre/2*deltak(3), ...   % PE2 gradient, max amplitude
+    'Area', Nz_gre*deltak(3)/2, ...   % PE2 gradient, max amplitude
     'Duration', Tpre), ...
     commonRasterTime, sys);
 
@@ -60,10 +65,11 @@ pe1Steps = ((0:Ny_gre-1)-Ny_gre/2)/Ny_gre*2;
 pe2Steps = ((0:Nz_gre-1)-Nz_gre/2)/Nz_gre*2;
 
 %% Calculate timing
-TEmin = rf.shape_dur/2 + rf.ringdownTime + mr.calcDuration(gxPre) ...
-      + adc.delay + Nx_gre/2*dwell;
+TEmin = mr.calcDuration(rf)/2 + mr.calcDuration(gzSSR)...
+      + mr.calcDuration(gxPre) + adc.delay + Nx_gre/2*dwell;
 delayTE = ceil((TE-TEmin)/seq.gradRasterTime)*seq.gradRasterTime;
-TRmin = mr.calcDuration(rf) + delayTE + mr.calcDuration(gxPre) ...
+TRmin = mr.calcDuration(rf) + mr.calcDuration(gzSSR)...
+      + delayTE + mr.calcDuration(gxPre)...
       + mr.calcDuration(gx) + mr.calcDuration(gxSpoil);
 delayTR = ceil((TR-TRmin)/seq.gradRasterTime)*seq.gradRasterTime;
 
@@ -72,7 +78,7 @@ delayTR = ceil((TR-TRmin)/seq.gradRasterTime)*seq.gradRasterTime;
 % iZ = 0: ADC is turned on and used for receive gain calibration on GE scanners
 % iZ > 0: Image acquisition
 
-nDummyZLoops = 1;
+nDummyZLoops = 4;
 rf_phase = 0;
 rf_inc = 0;
 
@@ -93,36 +99,35 @@ for iZ = -nDummyZLoops:Nz_gre
         yStep = (iZ > 0) * pe1Steps(iY);
         zStep = (iZ > 0) * pe2Steps(max(1,iZ));
 
-        for c = 1:length(TE)
 
-            % RF spoiling
-            rf.phaseOffset = rf_phase/180*pi;
-            adc.phaseOffset = rf_phase/180*pi;
-            rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
-            rf_phase = mod(rf_phase+rf_inc, 360.0);
-            
-            % Excitation
-            % Mark start of segment (block group) by adding label.
-            % Subsequent blocks in block group are NOT labelled.
-            seq.addBlock(rf, mr.makeLabel('SET', 'TRID', 2-isDummyTR));
-            
-            % Encoding
-            seq.addBlock(mr.makeDelay(delayTE(c)));
-            seq.addBlock(gxPre, ...
-                mr.scaleGrad(gyPre, yStep), ...
-                mr.scaleGrad(gzPre, zStep));
-            if isDummyTR
-                seq.addBlock(gx);
-            else
-                seq.addBlock(gx, adc);
-            end
-
-            % rephasing/spoiling
-            seq.addBlock(gxSpoil, ...
-                mr.scaleGrad(gyPre, -yStep), ...
-                mr.scaleGrad(gzPre, -zStep));
-            seq.addBlock(mr.makeDelay(delayTR(c)));
+        % RF spoiling
+        rf.phaseOffset = rf_phase/180*pi;
+        adc.phaseOffset = rf_phase/180*pi;
+        rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
+        rf_phase = mod(rf_phase+rf_inc, 360.0);
+        
+        % Excitation
+        % Mark start of segment (block group) by adding label.
+        % Subsequent blocks in block group are NOT labelled.
+        seq.addBlock(rf,gzSS, mr.makeLabel('SET', 'TRID', 2-isDummyTR));
+        seq.addBlock(gzSSR);
+        
+        % Encoding
+        seq.addBlock(mr.makeDelay(delayTE));
+        seq.addBlock(gxPre, ...
+            mr.scaleGrad(gyPre, yStep), ...
+            mr.scaleGrad(gzPre, zStep));
+        if isDummyTR
+            seq.addBlock(gx);
+        else
+            seq.addBlock(gx, adc);
         end
+
+        % rephasing/spoiling
+        seq.addBlock(gxSpoil, ...
+            mr.scaleGrad(gyPre, -yStep), ...
+            mr.scaleGrad(gzPre, -zStep));
+        seq.addBlock(mr.makeDelay(delayTR));
     end
 end
 fprintf('Sequence ready\n');
