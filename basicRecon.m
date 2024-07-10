@@ -10,12 +10,12 @@ Nloops = 10; % What you set toppe CV 8 to when running the scan
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames and options
-fn_smaps = '/mnt/storage/rexfung/20240705epi_fat/gre.h5';
-fn_cal = '/mnt/storage/rexfung/20240705epi_fat/cal.h5';
-fn_loop = '/mnt/storage/rexfung/20240705epi_fat/loop.h5';
+fn_smaps = '/mnt/storage/rexfung/20240705epi_ball/gre.h5';
+fn_cal = '/mnt/storage/rexfung/20240705epi_ball/cal.h5';
+fn_loop = '/mnt/storage/rexfung/20240705epi_ball/loop.h5';
 fn_adc = sprintf('adc/P%dadc.mod',Nx);
-showEPIphaseDiff = false;
-doSENSE = false;
+showEPIphaseDiff = true;
+doSENSE = true;
 
 %% Data loading
 % Load raw data from scan archives (takes some time)
@@ -46,13 +46,11 @@ end
 fprintf('Max real part: %d\n', max(real(ksp_raw(:))))
 fprintf('Max imag part: %d\n', max(imag(ksp_raw(:))))
 
-if doSENSE
-    ksp_smaps = flip(ksp_raw_smaps, 1); % tv6 flips data along FID direction
-    [Nfid,Ncoils,N] = size(ksp_smaps);
-    ksp_smaps = ksp_smaps(:,:,1:Ny_gre*Nz_gre); % discard trailing data
-    ksp_smaps = reshape(ksp_smaps,Nx_gre,Ncoils,Ny_gre,Nz_gre);
-    ksp_smaps = permute(ksp_smaps,[1 3 4 2]); % [Nx Ny Nz Ncoils]
-end
+ksp_smaps = flip(ksp_raw_smaps, 1); % tv6 flips data along FID direction
+[Nfid,Ncoils,N] = size(ksp_smaps);
+ksp_smaps = ksp_smaps(:,:,1:Ny_gre*Nz_gre); % discard trailing data
+ksp_smaps = reshape(ksp_smaps,Nx_gre,Ncoils,Ny_gre,Nz_gre);
+ksp_smaps = permute(ksp_smaps,[1 3 4 2]); % [Nx Ny Nz Ncoils]
 
 % Reshape and permute calibration data (a single frame w/out blips)
 ksp_cal = flip(ksp_raw_cal, 1); % tv6 flips data along FID direction
@@ -71,10 +69,9 @@ ksp_rampsamp = permute(ksp_rampsamp,[1 3 4 5 6 2]); % [Nfid Ny/Nsegments Nsegmen
 %% Prepare for reconstruction
 % Estimate k-space center offset due to gradient delay
 cal_data = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Nz*Ncoils);
-% cal_data(:,2:2:end) = flip(cal_data(:,2:2:end),1);
 [M, I] = max(cal_data,[],1);
 I = squeeze(I);
-delay = mean(I,'all') - Nfid/2; delay = -1.5;
+delay = 2*mean(I,'all') - Nfid;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -121,11 +118,21 @@ end
 
 %% Get sensitivity maps with PISCO
 if doSENSE
-    tmp = ifftshift(ifft(fftshift(ksp_smaps),Nz_gre,3));
+    % Only use central (high SNR) region of k-space to estimate smaps
+    cal_length = 32; % Length of each dimension of the calibration data
+    center_x = ceil(Nx_gre/2) + ~rem(Nx_gre,2);
+    center_y = ceil(Ny_gre/2) + ~rem(Ny_gre,2);
+    cal_index_x = center_x + (-floor(cal_length/2):floor(cal_length/2) - ~rem(cal_length/2,2));
+    cal_index_y = center_y + (-floor(cal_length/2):floor(cal_length/2) - ~rem(cal_length/2,2));
+
+    % Compute smaps slice-by-slice
+    tmp = fftshift(ifft(ifftshift(ksp_smaps),Nz_gre,3));
     smaps = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
     for z = 1:Nz_gre
-        [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(squeeze(tmp(:,:,z,:)),...
-                                    [Nx_gre, Ny_gre]);
+        [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(...
+                                        squeeze(tmp(cal_index_x,cal_index_y,z,:)),...
+                                        [Nx_gre, Ny_gre]...
+                                    );
     end
 
     % Crop in z to match EPI FoV
@@ -139,9 +146,6 @@ if doSENSE
         smaps_new(:,:,:,coil) = imresize3(smaps(:,:,:,coil),[Nx,Ny,Nz]);
     end
     smaps = smaps_new; clear smaps_new;
-
-    % Add a time dimension so it can be multiplied
-    smaps = reshape(smaps,[Nx Ny Nz 1 Ncoils]);
 end
 
 %% IFFT to get images
@@ -156,7 +160,7 @@ imgs_mc = ifftshift(ifft(...
 
 %% Coil combination
 if doSENSE
-    img_final = sum(imgs_mc .* conj(smaps), 5);
+    img_final = sum(imgs_mc .* conj(reshape(smaps,[Nx Ny Nz 1 Ncoils])), 5);
 else % root sum of squares combination
     img_final = sqrt(sum(abs(imgs_mc).^2, 5));
 end
@@ -168,13 +172,21 @@ ksp_final = toppe.utils.ift3(img_final);
 img_gre = sqrt(sum(abs(toppe.utils.ift3(ksp_smaps)).^2,4));
 
 %% Viz
+close all;
+
+% Final images
 figure('WindowState','maximized');
 im('col',Nframes,'row',Nz,reshape(permute(img_final,[1 2 4 3]),Nx,Ny,Nframes*Nz),'cbar')
 title(fn_loop(1:end-3));
 ylabel('z direction'); xlabel('time')
 
-% saveas(gcf, strcat('figs/',fn(1:end-2),'.png'));
-
+% Sensitivity maps
+if doSENSE
+    figure('WindowState','maximized');
+    im('col',Ncoils,'row',Nz,reshape(permute(squeeze(smaps),[1 2 4 3]),Nx,Ny,Ncoils*Nz),'cbar')
+    title('Sensitivity maps');
+    ylabel('z direction'); xlabel('Coils');
+end
 
 %% Make GIF (using the gif add-on)
 if false
