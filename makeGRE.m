@@ -1,8 +1,7 @@
-% writeB0.m
-%
-% 3D GRE B0 mapping demo sequence for Pulseq on GE v1.0 User Guide
+% Pulseq script for acquiring GRE data, both readout polarities
 %
 % Modified June 21, 2024, for acquiring GRE data for sensitivity maps
+% Modified July 12, 2024 to acquire both polarities for DPG
 
 % Define params (edit setGREparams to change)
 setGREparams;
@@ -82,6 +81,7 @@ nDummyZLoops = 4;
 rf_phase = 0;
 rf_inc = 0;
 
+printf('Constructing positive polarity GRE\n');
 lastmsg = [];
 for iZ = -nDummyZLoops:Nz_gre
     isDummyTR = iZ < 0;
@@ -99,6 +99,60 @@ for iZ = -nDummyZLoops:Nz_gre
         yStep = (iZ > 0) * pe1Steps(iY);
         zStep = (iZ > 0) * pe2Steps(max(1,iZ));
 
+        % RF spoiling
+        rf.phaseOffset = rf_phase/180*pi;
+        adc.phaseOffset = rf_phase/180*pi;
+        rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
+        rf_phase = mod(rf_phase+rf_inc, 360.0);
+        
+        % Excitation
+        % Mark start of segment (block group) by adding label.
+        % Subsequent blocks in block group are NOT labelled.
+        seq.addBlock(rf,gzSS, mr.makeLabel('SET', 'TRID', 2-isDummyTR));
+        seq.addBlock(gzSSR);
+        
+        % Encoding
+        seq.addBlock(mr.makeDelay(delayTE));
+        seq.addBlock(gxPre, ...
+            mr.scaleGrad(gyPre, yStep), ...
+            mr.scaleGrad(gzPre, zStep));
+        if isDummyTR
+            seq.addBlock(gx);
+        else
+            seq.addBlock(gx, adc);
+        end
+
+        % rephasing/spoiling
+        seq.addBlock(gxSpoil, ...
+            mr.scaleGrad(gyPre, -yStep), ...
+            mr.scaleGrad(gzPre, -zStep));
+        seq.addBlock(mr.makeDelay(delayTR));
+    end
+end
+
+
+%% Now do the same thing but with x gradients flipped
+gxPre = mr.scaleGrad(gxPre, -1);
+gx = mr.scaleGrad(gx, -1);
+gxSpoil = mr.scaleGrad(gxSpoil, -1);
+
+printf('Constructing negative polarity GRE\n');
+lastmsg = [];
+for iZ = -nDummyZLoops:Nz_gre
+    isDummyTR = iZ < 0;
+
+    for ii = 1:length(lastmsg)
+        fprintf('\b');
+    end
+    msg = sprintf('z encode %d of %d ', iZ, Nz_gre);
+    fprintf(msg);
+    lastmsg = msg;
+
+    for iY = 1:Ny_gre
+        % Turn on y and z prephasing lobes, except during dummy scans and
+        % receive gain calibration (auto prescan)
+        yStep = (iZ > 0) * pe1Steps(iY);
+        zStep = (iZ > 0) * pe2Steps(max(1,iZ));
 
         % RF spoiling
         rf.phaseOffset = rf_phase/180*pi;
@@ -146,10 +200,6 @@ end
 seq.setDefinition('FOV', fov_gre);
 seq.setDefinition('Name', 'b0');
 seq.write('b0.seq');
-
-%% Plot sequence
-Noffset = length(TE)*Ny_gre*(nDummyZLoops+1);
-% seq.plot('timerange',[Noffset Noffset+4]*TR(1), 'timedisp', 'ms');
 
 %% Convert to .tar file for GE
 toGE = true;

@@ -1,29 +1,14 @@
-% brainstem interleaved 3D-EPI sequence in Pulseq, calibration portion
+% Sequence for acquiring ACS data for DPG recon
+% 
+% Same as makeSeqEPIloop, but flips the readout polarity every frame
 %
-% This short sequence first excites the volume to steady state, then 
-% acquires many readout lines without Gy and Gz blips to:
-% 1. Allow the scanner to tune receiver gains
-% 2. Collect data used for EPI ghost correciton
-%
-% This script creates the file '3DEPImultishot_cal.seq', that can be executed directly
-% on Siemens MRI scanners using the Pulseq interpreter.
-% The .seq file can also be converted to a .tar file that can be executed on GE
-% scanners, see main.m.
-%
-% The experimental parameters below are chosen such that the sequence 
-% can be executed identically (to us precision) on Siemens and GE systems.
-% For more information about preparing a Pulseq file for execution on GE scanners,
-% see the 'Pulseq on GE' manual.
-%
-% Performance?
-% Very low temporal resolution (2.6s) but
-% High temporal resolution (1mm isotropic)
+% Rex Fung, July 11th, 2024
 
-%% Define experimental parameters
+%% Definte experiment parameters
 setEPIparams;
 
 %% Path and options
-seqname = '3DEPI_cal';
+seqname = '3DEPI_loop';
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
 
@@ -109,9 +94,9 @@ gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
-if mod(round(Tread*1e6)*1e-6, dwell)
-    Tread = Tread - mod(Tread, dwell) + dwell;
-end
+if mod(round(Tread/dwell), sys.adcSamplesDivisor) % Ensure Nfid is a multiple of adcSamplesDivisor
+    Tread = (round(Tread/dwell) - mod(round(Tread/dwell), sys.adcSamplesDivisor))*dwell;
+end 
 adc = mr.makeAdc(round(Tread/dwell), sys, ...
     'Duration', Tread, ...
     'Delay', blipDuration/2);
@@ -149,7 +134,9 @@ minTE = mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
+minTR = mr.calcDuration(rfsat)...
+      + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
+      + TEdelay...
       + mr.calcDuration(gzPre) + Ny/Nsegments*mr.calcDuration(gro)...
       + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
@@ -164,11 +151,16 @@ kzStepMax = max(abs(kzStep));
 rf_phase = 0;
 rf_inc = 0;
 
-for frame = -Ndummyframes:0
+for frame = 1:NframesPerLoop*2 % times 2 for dual polarity
 
     % Convenience booleans for turning off adc and y gradient
     isDummyFrame = frame < 0;
     isCalFrame = frame == 0;
+    
+    % Flip polarity every other frame for DPG
+    gxPre = mr.scaleGrad(gxPre,-1);
+    gro = mr.scaleGrad(gro,-1);
+    gxSpoil = mr.scaleGrad(gxSpoil,-1);
     
     % z-loop (move to proper kz location)
     for z = 1:Nz
@@ -178,7 +170,7 @@ for frame = -Ndummyframes:0
         for seg = 1:Nsegments
             % Label the first block in each segment with the TRID (see Pulseq on GE manual)
             TRID = 3*seg - (frame <= 0) - (frame == 0);
-            
+    
             % Fat-sat
             seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
     
@@ -275,7 +267,7 @@ seq.write(strcat(seqname, '.seq'));
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 figure('WindowState','maximized');
-toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
+toppe.plotseq(sysGE, 'timeRange',[0, 2*volumeTR]);
 
 %% Detailed check that takes some time to run
 doDetailedCheck = false;

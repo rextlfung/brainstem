@@ -16,6 +16,10 @@ sys = mr.opts('maxGrad', 40, 'gradUnit','mT/m', ...
               'adcRasterTime', 2e-6, ...
               'blockDurationRaster', 10e-6, ...
               'B0', 3.0);
+sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
+    'maxSlew', sys.maxSlew/sys.gamma/10, ...           % G/cm/ms
+    'maxRF', 0.25);
+CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
 % Spatial parameters (different from EPI scans)
 fov_gre = [180, 180, 10]*1e-3;      % field of view
