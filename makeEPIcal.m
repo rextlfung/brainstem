@@ -80,7 +80,7 @@ rfsat = mr.makeArbitraryRf(rfp, ...
     flip_ang*abs(sum(rfp*sys.rfRasterTime))*(2*pi), ...
     'system', sys);
 rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure correct amplitude (Hz)
-rfsat.freqOffset = fatOffresFreq;  % Hz
+rfsat.freqOffset = -fatOffresFreq;  % Hz
 
 %% Define readout gradients and ADC event
 % The Pulseq toolbox really shines here!
