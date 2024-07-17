@@ -14,8 +14,10 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
 % Basic spatial parameters
-fov = [180, 180, 10]*1e-3;           % field of view
-Nx = 180; Ny = Nx; Nz = 10;          % acquisition sizes
+fov = [180, 180, 15]*1e-3; % field of view (m)
+res = [1.5, 1.5, 1.5]*1e-3; % resolution (m)
+N = round(fov./res); % acquisiton tensor size
+Nx = N(1); Ny = N(2); Nz = N(3); 
 Nsegments = 4;                      % number of segments in EPI readout
 Nshots = Nz*Nsegments;              % number of shots per volume
 

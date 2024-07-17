@@ -1,11 +1,10 @@
-% brainstem interleaved 3D-EPI sequence in Pulseq, calibration portion
+% brainstem interleaved 3D-EPI sequence in Pulseq, looping portion
 %
-% This short sequence first excites the volume to steady state, then 
-% acquires many readout lines without Gy and Gz blips to:
-% 1. Allow the scanner to tune receiver gains
-% 2. Collect data used for EPI ghost correciton
+% This sequence is to be looped on the scanner for fMRI acquisition. Please
+% make sure that the number of RF excitations per loop is a multiple of 40
+% to ensure that the RF spoiling cycle is complete per loop.
 %
-% This script creates the file '3DEPI_cal.seq', that can be executed directly
+% This script creates the file '3DEPImultishot_loop.seq', that can be executed directly
 % on Siemens MRI scanners using the Pulseq interpreter.
 % The .seq file can also be converted to a .tar file that can be executed on GE
 % scanners, see main.m.
@@ -15,13 +14,13 @@
 % For more information about preparing a Pulseq file for execution on GE scanners,
 % see the 'Pulseq on GE' manual.
 %
-% Modified July 12th, 2024 to acquire both polarities
+% 
 
-%% Define experimental parameters
+%% Definte experiment parameters
 setEPIparams;
 
 %% Path and options
-seqname = '3DEPI_cal';
+seqname = '3DEPI_loop_rkzs';
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
 
@@ -80,7 +79,7 @@ rfsat = mr.makeArbitraryRf(rfp, ...
     flip_ang*abs(sum(rfp*sys.rfRasterTime))*(2*pi), ...
     'system', sys);
 rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure correct amplitude (Hz)
-rfsat.freqOffset = fatOffresFreq;  % Hz
+rfsat.freqOffset = -fatOffresFreq;  % Hz
 
 %% Define readout gradients and ADC event
 % The Pulseq toolbox really shines here!
@@ -103,13 +102,13 @@ end
 % Readout trapezoid
 systmp = sys;
 systmp.maxGrad = deltak(1)/dwell;  % to ensure >= Nyquist sampling
-gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,systmp);
+gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,sys);
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
 if mod(round(Tread/dwell), sys.adcSamplesDivisor) % Ensure Nfid is a multiple of adcSamplesDivisor
     Tread = (round(Tread/dwell) - mod(round(Tread/dwell), sys.adcSamplesDivisor))*dwell;
-end
+end 
 adc = mr.makeAdc(round(Tread/dwell), sys, ...
     'Duration', Tread, ...
     'Delay', blipDuration/2);
@@ -147,10 +146,10 @@ minTE = mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
+minTR = mr.calcDuration(rfsat)...
       + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
-      + mr.calcDuration(gzPre) + TEdelay...
-      + Ny/Nsegments*mr.calcDuration(gro)...
+      + TEdelay...
+      + mr.calcDuration(gzPre) + Ny/Nsegments*mr.calcDuration(gro)...
       + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 
@@ -164,24 +163,23 @@ kzStepMax = max(abs(kzStep));
 rf_phase = 0;
 rf_inc = 0;
 
-for frame = -Ndummyframes:0
+for frame = 1:NframesPerLoop
 
     % Convenience booleans for turning off adc and y gradient
     isDummyFrame = frame < 0;
     isCalFrame = frame == 0;
     
-    % No kz-encoding
-    for z = floor(Nz/2)
+    % z-loop (move to proper kz location)
+    for z = 1:Nz
         gzPreTmp = mr.scaleGrad(gzPre,(z - floor(Nz/2))/(Nz/2));
     
         % In plane loop (2D segmented EPI)
         for seg = 1:Nsegments
             % Label the first block in each segment with the TRID (see Pulseq on GE manual)
             TRID = 3*seg - (frame <= 0) - (frame == 0);
-            
+    
             % Fat-sat
             seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
-            seq.addBlock(gxSpoil, gzSpoil);
     
             % RF spoiling
             rf.phaseOffset = rf_phase/180*pi;
@@ -276,7 +274,7 @@ seq.write(strcat(seqname, '.seq'));
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 figure('WindowState','maximized');
-toppe.plotseq(sysGE, 'timeRange',[0, zTR]);
+toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
 
 %% Detailed check that takes some time to run
 doDetailedCheck = false;

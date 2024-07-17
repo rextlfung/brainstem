@@ -22,8 +22,10 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
 % Spatial parameters (different from EPI scans)
-fov_gre = [180, 180, 10]*1e-3;      % field of view
-Nx_gre = 180; Ny_gre = Nx_gre; Nz_gre = 10; % Matrix size. Make large enough to avoid foldover
+fov_gre = [180, 180, 15]*1e-3; % field of view (m)
+res_gre = [1.5, 1.5, 1.5]*1e-3; % resolution (m)
+N_gre = fov_gre./res_gre; % acquisiton tensor size
+Nx_gre = N_gre(1); Ny_gre = N_gre(2); Nz_gre = N_gre(3); 
 
 % Other acquisition params
 dwell = 4e-6;                   % ADC sample time (s)

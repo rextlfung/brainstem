@@ -1,5 +1,4 @@
-%% Reconstruction code using scan archives instead of p-files
-% Requires GE Orchestra
+% Reconstruction code using scan archives instead of p-files
 % Rex Fung, June 17th, 2024
 
 %% Load in params
@@ -7,13 +6,13 @@ setGREparams; setEPIparams;
 
 % Params defined at scan
 Nloops = 10; % What you set toppe CV 8 to when running the scan
-Nframes = 2*Nloops*NframesPerLoop;
+Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20240711epi/';
+datdir = '/mnt/storage/rexfung/20240717epi/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'acs.h5');
+fn_loop = strcat(datdir,'loop.h5');
 fn_adc = sprintf('adc/adc%d.mod',Nx);
 
 % Options
@@ -61,9 +60,9 @@ ksp_smaps = reshape(ksp_smaps,Nx_gre,Ncoils,Ny_gre,Nz_gre);
 ksp_smaps = permute(ksp_smaps,[1 3 4 2]); % [Nx Ny Nz Ncoils]
 
 % Reshape and permute calibration data (a single frame w/out blips)
-ksp_cal = ksp_cal_raw(:,:,1:Ny*Nz); % discard trailing data
-ksp_cal = reshape(ksp_cal,Nfid,Ncoils,Ny/Nsegments,Nsegments,Nz);
-ksp_cal = permute(ksp_cal,[1 3 4 5 2]); % [Nfid Ny/Nsegments Nsegments Nz Ncoils]
+ksp_cal = ksp_cal_raw(:,:,1:Ny); % discard trailing data
+ksp_cal = reshape(ksp_cal,Nfid,Ncoils,Ny/Nsegments,Nsegments);
+ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny/Nsegments Nsegments Nz Ncoils]
 
 % Reshape and permute loop data
 ksp_rs = ksp_raw(:,:,1:Ny*Nz*Nframes);
@@ -72,7 +71,7 @@ ksp_rs = permute(ksp_rs,[1 3 4 5 6 2]); % [Nfid Ny/Nsegments Nsegments Nz Nframe
 
 %% Prepare for reconstruction
 % Estimate k-space center offset due to gradient delay
-cal_data = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Nz*Ncoils);
+cal_data = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Ncoils);
 cal_data(:,2:2:end,:) = flip(cal_data(:,2:2:end,:),1);
 [M, I] = max(cal_data,[],1);
 delay = 2*mean(I,'all') - Nfid;
@@ -88,7 +87,7 @@ oephase_data = ksp_cal(:,1:ETL_even,:,:,:);
 
 % EPI ghost correction phase offset values
 oephase_data = hmriutils.epi.rampsampepi2cart(oephase_data, kxo, kxe, Nx, fov(1)*100, 'nufft');
-oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,ETL_even,Nsegments*Nz*Ncoils)),Nx,1));
+oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,ETL_even,Nsegments*Ncoils)),Nx,1));
 [a, th] = hmriutils.epi.getoephase(oephase_data,showEPIphaseDiff);
 fprintf('Constant phase offset (radians): %f\n', a(1));
 fprintf('Linear term (radians/fov): %f\n', a(2));

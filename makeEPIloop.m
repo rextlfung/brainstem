@@ -1,10 +1,10 @@
 % brainstem interleaved 3D-EPI sequence in Pulseq, looping portion
 %
 % This sequence is to be looped on the scanner for fMRI acquisition. Please
-% set NframesPerLoop and Nsegments such at NframesPerLoop*Nsegments is a multiple of 40
+% make sure that the number of RF excitations per loop is a multiple of 40
 % to ensure that the RF spoiling cycle is complete per loop.
 %
-% This script creates the file '3DEPImultishot_loop.seq', that can be executed directly
+% This script creates the file '3DEPI_loop.seq', that can be executed directly
 % on Siemens MRI scanners using the Pulseq interpreter.
 % The .seq file can also be converted to a .tar file that can be executed on GE
 % scanners, see main.m.
@@ -15,7 +15,7 @@
 % see the 'Pulseq on GE' manual.
 %
 % Performance?
-% Very low temporal resolution (2.6s) but
+% Very low temporal resolution (3s) but
 % High temporal resolution (1mm isotropic)
 
 %% Definte experiment parameters
@@ -81,7 +81,7 @@ rfsat = mr.makeArbitraryRf(rfp, ...
     flip_ang*abs(sum(rfp*sys.rfRasterTime))*(2*pi), ...
     'system', sys);
 rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure correct amplitude (Hz)
-rfsat.freqOffset = -fatOffresFreq;  % Hz
+rfsat.freqOffset = fatOffresFreq;  % Hz
 
 %% Define readout gradients and ADC event
 % The Pulseq toolbox really shines here!
@@ -148,7 +148,7 @@ minTE = mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
 TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(rfsat)...
+minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
       + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
       + TEdelay...
       + mr.calcDuration(gzPre) + Ny/Nsegments*mr.calcDuration(gro)...
@@ -182,6 +182,7 @@ for frame = 1:NframesPerLoop
     
             % Fat-sat
             seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
+            seq.addBlock(gxSpoil, gzSpoil);
     
             % RF spoiling
             rf.phaseOffset = rf_phase/180*pi;
