@@ -1,27 +1,14 @@
-% brainstem interleaved 3D-EPI sequence in Pulseq, calibration portion
+% Multishot 3D EPI, looping portion
 %
-% This short sequence first excites the volume to steady state, then 
-% acquires many readout lines without Gy and Gz blips to:
-% 1. Allow the scanner to tune receiver gains
-% 2. Collect data used for EPI ghost correciton
+% Set parameters in setEPIparams.m
 %
-% This script creates the file '3DEPI_cal.seq', that can be executed directly
-% on Siemens MRI scanners using the Pulseq interpreter.
-% The .seq file can also be converted to a .tar file that can be executed on GE
-% scanners, see main.m.
-%
-% The experimental parameters below are chosen such that the sequence 
-% can be executed identically (to us precision) on Siemens and GE systems.
-% For more information about preparing a Pulseq file for execution on GE scanners,
-% see the 'Pulseq on GE' manual.
-%
-% Modified July 12th, 2024 to acquire both polarities
+% Last modified Aug 9th, 2024
 
-%% Define experimental parameters
+%% Definte experiment parameters
 setEPIparams;
 
 %% Path and options
-seqname = '3DEPI_cal';
+seqname = '3DEPI_loop';
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
 
@@ -30,7 +17,7 @@ caipiPythonPath = 'caipi/';
 % create caipi.mat, and load it
 pyFile = [caipiPythonPath 'skippedcaipi_sampling.py'];
 pyCmd = sprintf('python3 %s %d %d %d %d %d %d', ...
-    pyFile, Ny, Nz, Ry, Rz, CaipiShiftZ, 1);
+    pyFile, Ny, Nz, 1, 1, 1, 1);
 
 % try to call Python script from Matlab
 pyenv(ExecutionMode="InProcess");
@@ -44,8 +31,8 @@ end
 load caipi  
 
 % kz and ky indeces (multiples of deltak)
-kyInds = double(indices((end-etl+1):end, 2));
-kzInds = double(indices((end-etl+1):end, 1));
+kyInds = double(indices((end-Ny+1):end, 2));
+kzInds = double(indices((end-Ny+1):end, 1));
 
 % ky/kz encoding blip amplitude along echo train (multiples of deltak)
 kyStep = diff(kyInds);
@@ -103,13 +90,13 @@ end
 % Readout trapezoid
 systmp = sys;
 systmp.maxGrad = deltak(1)/dwell;  % to ensure >= Nyquist sampling
-gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,systmp);
+gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,sys);
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
 if mod(round(Tread/dwell), sys.adcSamplesDivisor) % Ensure Nfid is a multiple of adcSamplesDivisor
     Tread = (round(Tread/dwell) - mod(round(Tread/dwell), sys.adcSamplesDivisor))*dwell;
-end
+end 
 adc = mr.makeAdc(round(Tread/dwell), sys, ...
     'Duration', Tread, ...
     'Delay', blipDuration/2);
@@ -149,8 +136,8 @@ TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 %% Calculate delay to achieve desired TR
 minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
       + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
-      + mr.calcDuration(gzPre) + TEdelay...
-      + Ny/Nsegments*mr.calcDuration(gro)...
+      + TEdelay...
+      + mr.calcDuration(gzPre) + Ny/Nsegments*mr.calcDuration(gro)...
       + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 
@@ -164,22 +151,21 @@ kzStepMax = max(abs(kzStep));
 rf_phase = 0;
 rf_inc = 0;
 
-printf('Constructing sequence with positive readout polarity\n');
-for frame = -Ndummyframes:0
+for frame = 1:NframesPerLoop
 
     % Convenience booleans for turning off adc and y gradient
     isDummyFrame = frame < 0;
     isCalFrame = frame == 0;
     
-    % No kz-encoding
-    for z = floor(Nz/2)
+    % z-loop (move to proper kz location)
+    for z = 1:Nz
         gzPreTmp = mr.scaleGrad(gzPre,(z - floor(Nz/2))/(Nz/2));
     
         % In plane loop (2D segmented EPI)
         for seg = 1:Nsegments
             % Label the first block in each segment with the TRID (see Pulseq on GE manual)
             TRID = 3*seg - (frame <= 0) - (frame == 0);
-            
+    
             % Fat-sat
             seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
             seq.addBlock(gxSpoil, gzSpoil);
@@ -223,106 +209,7 @@ for frame = -Ndummyframes:0
             end
     
             % Zip through k-space with EPI trajectory
-            for ie = 2:(etl/Nsegments - 1)
-                gybd = mr.scaleGrad(gyBlipDown, Nsegments*kyStep(ie-1)/kyStepMax);
-                gybu = mr.scaleGrad(gyBlipUp, Nsegments*kyStep(ie)/kyStepMax);
-                gybdu = mr.addGradients({gybd, gybu}, sys);
-                if isDummyFrame
-                    seq.addBlock(mr.scaleGrad(gro, (-1)^(ie-1)), gybdu);
-                elseif isCalFrame
-                    seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(ie-1)));
-                else
-                    seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(ie-1)), gybdu);
-                end
-            end
-    
-            % Last line
-            if isDummyFrame
-                seq.addBlock(mr.scaleGrad(gro, (-1)^(ie)), ...
-                             mr.scaleGrad(gyBlipDown, Nsegments*kyStep(ie)/kyStepMax));
-            elseif isCalFrame
-                seq.addBlock(adc, ...
-                             mr.scaleGrad(gro, (-1)^(ie)));
-            else
-                seq.addBlock(adc, ...
-                             mr.scaleGrad(gro, (-1)^(ie)), ...
-                             mr.scaleGrad(gyBlipDown, Nsegments*kyStep(ie)/kyStepMax));
-            end
-    
-            % spoil
-            seq.addBlock(gxSpoil, gzSpoil);
-    
-            % Achieve desired TR
-            seq.addBlock(mr.makeDelay(TRdelay - segDelay));
-        end
-    end
-end
-
-%% Now do the same thing but with readout gradients flipped
-gxPre = mr.scaleGrad(gxPre, -1);
-gro = mr.scaleGrad(gro, -1);
-gxSpoil = mr.scaleGrad(gxSpoil, -1);
-
-printf('Constructing sequence with negative readout polarity\n');
-for frame = -Ndummyframes:0
-
-    % Convenience booleans for turning off adc and y gradient
-    isDummyFrame = frame < 0;
-    isCalFrame = frame == 0;
-    
-    % No kz-encoding
-    for z = floor(Nz/2)
-        gzPreTmp = mr.scaleGrad(gzPre,(z - floor(Nz/2))/(Nz/2));
-    
-        % In plane loop (2D segmented EPI)
-        for seg = 1:Nsegments
-            % Label the first block in each segment with the TRID (see Pulseq on GE manual)
-            TRID = 3*seg - (frame <= 0) - (frame == 0);
-            
-            % Fat-sat
-            seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
-            seq.addBlock(gxSpoil, gzSpoil);
-    
-            % RF spoiling
-            rf.phaseOffset = rf_phase/180*pi;
-            adc.phaseOffset = rf_phase/180*pi;
-            rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
-            rf_phase = mod(rf_phase+rf_inc, 360.0);
-    
-            % "Slice" selective RF excitation
-            seq.addBlock(rf,gzSS);
-
-            % Rephase
-            seq.addBlock(gzSSR);
-    
-            % TE delay
-            if TE > minTE
-                seq.addBlock(mr.makeDelay(TEdelay));
-            end
-
-            % Segment delay so TE is smooth along central line of k-space
-            segDelay = (seg - 1)*mr.calcDuration(gro);
-            if seg > 1
-                seq.addBlock(mr.makeDelay(segDelay));
-            end
-    
-            % Move to corner of k-space and sample the first line
-            gyPreSeg = mr.scaleGrad(gyPre, ((seg - 1)*gyBlip.area + gyPre.area)/gyPre.area);
-            if isDummyFrame
-                seq.addBlock(gxPre, gyPreSeg, gzPreTmp);
-                seq.addBlock(gro, ...
-                             mr.scaleGrad(gyBlipUp, Nsegments*kyStep(1)/kyStepMax));
-            elseif isCalFrame
-                seq.addBlock(gxPre);
-                seq.addBlock(gro, adc);
-            else
-                seq.addBlock(gxPre, gyPreSeg, gzPreTmp);
-                seq.addBlock(gro, adc,...
-                             mr.scaleGrad(gyBlipUp, Nsegments*kyStep(1)/kyStepMax));
-            end
-    
-            % Zip through k-space with EPI trajectory
-            for ie = 2:(etl/Nsegments - 1)
+            for ie = 2:(Ny/Nsegments - 1)
                 gybd = mr.scaleGrad(gyBlipDown, Nsegments*kyStep(ie-1)/kyStepMax);
                 gybu = mr.scaleGrad(gyBlipUp, Nsegments*kyStep(ie)/kyStepMax);
                 gybdu = mr.addGradients({gybd, gybu}, sys);
@@ -376,7 +263,7 @@ seq.write(strcat(seqname, '.seq'));
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 figure('WindowState','maximized');
-toppe.plotseq(sysGE, 'timeRange',[0, 2*zTR]);
+toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
 
 %% Detailed check that takes some time to run
 doDetailedCheck = false;

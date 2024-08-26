@@ -1,10 +1,11 @@
-% brainstem interleaved 3D-EPI sequence in Pulseq, looping portion
+% brainstem interleaved 3D-EPI sequence in Pulseq, calibration portion
 %
-% This sequence is to be looped on the scanner for fMRI acquisition. Please
-% make sure that the number of RF excitations per loop is a multiple of 40
-% to ensure that the RF spoiling cycle is complete per loop.
+% This short sequence first excites the volume to steady state, then 
+% acquires many readout lines without Gy and Gz blips to:
+% 1. Allow the scanner to tune receiver gains
+% 2. Collect data used for EPI ghost correciton
 %
-% This script creates the file '3DEPI_loop.seq', that can be executed directly
+% This script creates the file '3DEPI_cal.seq', that can be executed directly
 % on Siemens MRI scanners using the Pulseq interpreter.
 % The .seq file can also be converted to a .tar file that can be executed on GE
 % scanners, see main.m.
@@ -14,15 +15,13 @@
 % For more information about preparing a Pulseq file for execution on GE scanners,
 % see the 'Pulseq on GE' manual.
 %
-% Performance?
-% Very low temporal resolution (3s) but
-% High temporal resolution (1mm isotropic)
+% Modified July 12th, 2024 to acquire both polarities
 
-%% Definte experiment parameters
+%% Define experimental parameters
 setEPIparams;
 
 %% Path and options
-seqname = '3DEPI_loop';
+seqname = '3DEPI_cal';
 addpath('excitation/');
 caipiPythonPath = 'caipi/';
 
@@ -31,7 +30,7 @@ caipiPythonPath = 'caipi/';
 % create caipi.mat, and load it
 pyFile = [caipiPythonPath 'skippedcaipi_sampling.py'];
 pyCmd = sprintf('python3 %s %d %d %d %d %d %d', ...
-    pyFile, Ny, Nz, Ry, Rz, CaipiShiftZ, 1);
+    pyFile, Ny, Nz, 1, 1, 1, 1);
 
 % try to call Python script from Matlab
 pyenv(ExecutionMode="InProcess");
@@ -45,8 +44,8 @@ end
 load caipi  
 
 % kz and ky indeces (multiples of deltak)
-kyInds = double(indices((end-etl+1):end, 2));
-kzInds = double(indices((end-etl+1):end, 1));
+kyInds = double(indices((end-Ny+1):end, 2));
+kzInds = double(indices((end-Ny+1):end, 1));
 
 % ky/kz encoding blip amplitude along echo train (multiples of deltak)
 kyStep = diff(kyInds);
@@ -81,7 +80,7 @@ rfsat = mr.makeArbitraryRf(rfp, ...
     flip_ang*abs(sum(rfp*sys.rfRasterTime))*(2*pi), ...
     'system', sys);
 rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure correct amplitude (Hz)
-rfsat.freqOffset = -fatOffresFreq;  % Hz
+rfsat.freqOffset = fatOffresFreq;  % Hz
 
 %% Define readout gradients and ADC event
 % The Pulseq toolbox really shines here!
@@ -104,13 +103,13 @@ end
 % Readout trapezoid
 systmp = sys;
 systmp.maxGrad = deltak(1)/dwell;  % to ensure >= Nyquist sampling
-gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,sys);
+gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,systmp);
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
 if mod(round(Tread/dwell), sys.adcSamplesDivisor) % Ensure Nfid is a multiple of adcSamplesDivisor
     Tread = (round(Tread/dwell) - mod(round(Tread/dwell), sys.adcSamplesDivisor))*dwell;
-end 
+end
 adc = mr.makeAdc(round(Tread/dwell), sys, ...
     'Duration', Tread, ...
     'Delay', blipDuration/2);
@@ -150,8 +149,8 @@ TEdelay = floor((TE-minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 %% Calculate delay to achieve desired TR
 minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
       + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
-      + TEdelay...
-      + mr.calcDuration(gzPre) + Ny/Nsegments*mr.calcDuration(gro)...
+      + mr.calcDuration(gzPre) + TEdelay...
+      + Ny/Nsegments*mr.calcDuration(gro)...
       + mr.calcDuration(gzSpoil);
 TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 
@@ -165,21 +164,21 @@ kzStepMax = max(abs(kzStep));
 rf_phase = 0;
 rf_inc = 0;
 
-for frame = 1:NframesPerLoop
+for frame = -Ndummyframes:0
 
     % Convenience booleans for turning off adc and y gradient
     isDummyFrame = frame < 0;
     isCalFrame = frame == 0;
     
-    % z-loop (move to proper kz location)
-    for z = 1:Nz
+    % No kz-encoding
+    for z = floor(Nz/2)
         gzPreTmp = mr.scaleGrad(gzPre,(z - floor(Nz/2))/(Nz/2));
     
         % In plane loop (2D segmented EPI)
         for seg = 1:Nsegments
             % Label the first block in each segment with the TRID (see Pulseq on GE manual)
             TRID = 3*seg - (frame <= 0) - (frame == 0);
-    
+            
             % Fat-sat
             seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
             seq.addBlock(gxSpoil, gzSpoil);
@@ -223,7 +222,7 @@ for frame = 1:NframesPerLoop
             end
     
             % Zip through k-space with EPI trajectory
-            for ie = 2:(etl/Nsegments - 1)
+            for ie = 2:(Ny/Nsegments - 1)
                 gybd = mr.scaleGrad(gyBlipDown, Nsegments*kyStep(ie-1)/kyStepMax);
                 gybu = mr.scaleGrad(gyBlipUp, Nsegments*kyStep(ie)/kyStepMax);
                 gybdu = mr.addGradients({gybd, gybu}, sys);
@@ -277,7 +276,7 @@ seq.write(strcat(seqname, '.seq'));
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 figure('WindowState','maximized');
-toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
+toppe.plotseq(sysGE, 'timeRange',[0, TR]);
 
 %% Detailed check that takes some time to run
 doDetailedCheck = false;

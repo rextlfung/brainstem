@@ -1,7 +1,6 @@
-% Pulseq script for acquiring GRE data, both readout polarities
+% Pulseq script for acquiring GRE data
 %
 % Modified June 21, 2024, for acquiring GRE data for sensitivity maps
-% Modified July 12, 2024 to acquire both polarities for DPG
 
 % Define params (edit setGREparams to change)
 setGREparams;

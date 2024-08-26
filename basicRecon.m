@@ -5,11 +5,11 @@
 setGREparams; setEPIparams;
 
 % Params defined at scan
-Nloops = 10; % What you set toppe CV 8 to when running the scan
+Nloops = 4; % What you set toppe CV 8 to when running the scan
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20240717epi/';
+datdir = '/mnt/storage/rexfung/20240809msEPI/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
@@ -24,29 +24,29 @@ doSENSE = true;
 mode = 2;
 switch mode
     case 1 % Depends on GE Orchestra
-        ksp_smaps_raw = toppe.utils.loadsafile(fn_gre,'acq_order',true);
+        ksp_gre_raw = toppe.utils.loadsafile(fn_gre,'acq_order',true);
         ksp_cal_raw = toppe.utils.loadsafile(fn_cal,'acq_order',true);
         ksp_raw = toppe.utils.loadsafile(fn_loop,'acq_order',true);
     case 2 % Independent of GE Orchestra
-        ksp_smaps_raw = read_archive(fn_gre);
+        ksp_gre_raw = read_archive(fn_gre);
         ksp_cal_raw = read_archive(fn_cal);
         ksp_raw = read_archive(fn_loop);
         [Nfid, Ncoils] = size(ksp_raw,2,5);
 
         % permute the data into the same form as case 1
-        ksp_smaps_raw = permute(squeeze(ksp_smaps_raw),[2,4,1,3]);
+        ksp_gre_raw = permute(squeeze(ksp_gre_raw),[2,4,1,3]);
         ksp_cal_raw = permute(squeeze(ksp_cal_raw),[2,4,1,3]);
         ksp_raw = permute(squeeze(ksp_raw),[2,4,1,3]);
 
         % discard leading empty data
-        ksp_smaps_raw = ksp_smaps_raw(:,:,(2*size(ksp_smaps_raw,3) + 1):end); % and cal data
+        ksp_gre_raw = ksp_gre_raw(:,:,(2*size(ksp_gre_raw,3) + 1):end); % and cal data
         ksp_cal_raw = ksp_cal_raw(:,:,(size(ksp_cal_raw,3) + 1):end);
         ksp_raw = ksp_raw(:,:,(size(ksp_raw,3) + 1):end);
 end
 
 % Print max real and imag parts to check for reasonable magnitude
-fprintf('Max real part of gre data: %d\n', max(real(ksp_smaps_raw(:))))
-fprintf('Max imag part of gre data: %d\n', max(imag(ksp_smaps_raw(:))))
+fprintf('Max real part of gre data: %d\n', max(real(ksp_gre_raw(:))))
+fprintf('Max imag part of gre data: %d\n', max(imag(ksp_gre_raw(:))))
 fprintf('Max real part of cal data: %d\n', max(real(ksp_cal_raw(:))))
 fprintf('Max imag part of cal data: %d\n', max(imag(ksp_cal_raw(:))))
 fprintf('Max real part of loop data: %d\n', max(real(ksp_raw(:))))
@@ -55,9 +55,9 @@ fprintf('Max imag part of loop data: %d\n', max(imag(ksp_raw(:))))
 %% Preprocessing
 
 % Reshape and permute gre data
-ksp_smaps = ksp_smaps_raw(:,:,1:Ny_gre*Nz_gre); % discard trailing data
-ksp_smaps = reshape(ksp_smaps,Nx_gre,Ncoils,Ny_gre,Nz_gre);
-ksp_smaps = permute(ksp_smaps,[1 3 4 2]); % [Nx Ny Nz Ncoils]
+ksp_gre = ksp_gre_raw(:,:,1:Ny_gre*Nz_gre); % discard trailing data
+ksp_gre = reshape(ksp_gre,Nx_gre,Ncoils,Ny_gre,Nz_gre);
+ksp_gre = permute(ksp_gre,[1 3 4 2]); % [Nx Ny Nz Ncoils]
 
 % Reshape and permute calibration data (a single frame w/out blips)
 ksp_cal = ksp_cal_raw(:,:,1:Ny); % discard trailing data
@@ -74,7 +74,7 @@ ksp_rs = permute(ksp_rs,[1 3 4 5 6 2]); % [Nfid Ny/Nsegments Nsegments Nz Nframe
 cal_data = reshape(abs(ksp_cal),Nfid,Ny/Nsegments,Nsegments*Ncoils);
 cal_data(:,2:2:end,:) = flip(cal_data(:,2:2:end,:),1);
 [M, I] = max(cal_data,[],1);
-delay = 2*mean(I,'all') - Nfid;
+delay = 2*mean(I,'all') - Nfid; delay = -delay;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -127,13 +127,19 @@ if doSENSE
     cal_index_y = center_y + (-floor(cal_length/2):floor(cal_length/2) - ~rem(cal_length/2,2));
 
     % Compute smaps slice-by-slice
-    tmp = fftshift(ifft(ifftshift(ksp_smaps),Nz_gre,3));
+    tmp = ifftshift(ifft(fftshift(ksp_gre),Nz_gre,3));
     smaps = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
     for z = 1:Nz_gre
-        [smaps(:,:,z,:), eigvals] = PISCO_senseMaps_estimation(...
+        [smaps_tmp, eigvals] = PISCO_senseMaps_estimation(...
                                         squeeze(tmp(cal_index_x,cal_index_y,z,:)),...
                                         [Nx_gre, Ny_gre]...
                                     );
+
+        % Normalize
+        smaps_tmp = smaps_tmp./sqrt(sum(abs(smaps_tmp).^2, 3));
+
+        % Allocate
+        smaps(:,:,z,:) = smaps_tmp;
     end
 
     % Crop in z to match EPI FoV
@@ -170,7 +176,7 @@ end
 ksp_final = toppe.utils.ift3(img_final);
 
 %% Compute GRE images
-img_gre = sqrt(sum(abs(toppe.utils.ift3(ksp_smaps)).^2,4));
+img_gre = sqrt(sum(abs(toppe.utils.ift3(ksp_gre)).^2,4));
 
 %% Viz
 close all;
