@@ -1,5 +1,6 @@
 % Pseudo-random 3D EPI sequence
-% Old blocking scheme. Results in inefficient pulseGEq representation.
+% Pauses readout gradient during blips for pulseq memory efficiency
+% Continuous readout gradient 
 % Rex Fung
 % Last modified August 26th, 2024
 
@@ -8,6 +9,7 @@ setEPIparams;
 
 %% Path and options
 seqname = '3DEPI_loop_rs';
+addpath('excitation');
 
 %% Excitation pulse
 [rf, gzSS, gzSSR] = mr.makeSincPulse(alpha/180*pi,...
@@ -22,13 +24,16 @@ fatsat.flip    = 90;      % degrees
 fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
 fatsat.tbw     = 3.5;     % time-bandwidth product
 fatsat.dur     = 8.0;     % pulse duration (ms)
+
 % RF waveform in Gauss
 wav = toppe.utils.rf.makeslr(fatsat.flip, fatsat.slThick, fatsat.tbw, fatsat.dur, 1e-6, toppe.systemspecs(), ...
-    'type', 'ex', ...    % fatsat pulse is a 90 so is of type 'ex', not 'st' (small-tip)
+    'type', 'ex', ... % fatsat pulse is a 90 so is of type 'ex', not 'st' (small-tip)
     'ftype', 'min', ...
     'writeModFile', false);
+
 % Convert from Gauss to Hz, and interpolate to sys.rfRasterTime
 rfp = rf2pulseq(wav, 4e-6, sys.rfRasterTime);
+
 % Create pulseq object
 % Try to account for the fact that makeArbitraryRf scales the pulse as follows:
 % signal = signal./abs(sum(signal.*opt.dwell))*flip/(2*pi);
@@ -79,25 +84,14 @@ end
 % Readout trapezoid
 systmp = sys;
 systmp.maxGrad = deltak(1)/dwell;  % to ensure >= Nyquist sampling
-gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,sys);
+gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1)),CRT,sys);
 
 % ADC event
-Tread = mr.calcDuration(gro) - blipDuration;
-if mod(round(Tread/dwell), sys.adcSamplesDivisor) % Ensure Nfid is a multiple of adcSamplesDivisor
-    Tread = (round(Tread/dwell) - mod(round(Tread/dwell), sys.adcSamplesDivisor))*dwell;
-end
+Tread = mr.calcDuration(gro);
+Tread = floor(Tread/CRT/sys.adcSamplesDivisor)*CRT*sys.adcSamplesDivisor;
 adc = mr.makeAdc(round(Tread/dwell), sys, ...
     'Duration', Tread, ...
-    'Delay', blipDuration/2);
-
-% Split blips at block boundary.
-[gyBlipUp, gyBlipDown] = mr.splitGradientAt(gyBlip, mr.calcDuration(gyBlip)/2);
-gyBlipUp.delay = mr.calcDuration(gro) - mr.calcDuration(gyBlip)/2;
-gyBlipDown.delay = 0;
-
-[gzBlipUp, gzBlipDown] = mr.splitGradientAt(gzBlip, mr.calcDuration(gzBlip)/2);
-gzBlipUp.delay = mr.calcDuration(gro) - mr.calcDuration(gzBlip)/2;
-gzBlipDown.delay = 0;
+    'Delay', sysGE.adcDeadTime*1e-6);
 
 % prephasers and spoilers
 gxPre = trap4ge(mr.makeTrapezoid('x', sys, ...
@@ -117,8 +111,9 @@ gzSpoil = trap4ge(mr.makeTrapezoid('z', sys, ...
 %% Calculate delay to achieve desired TE
 minTE = mr.calcDuration(rf)/2 - rf.delay...
       + mr.calcDuration(gzSSR)...
-      + mr.calcDuration(gxPre)...
-      + (Ny/2/Ry - 0.5) * mr.calcDuration(gro);
+      + mr.calcDuration(gzPre)...
+      + (Ny/2/Ry - 1) * (mr.calcDuration(gro) + blipDuration)...
+      + 0.5*mr.calcDuration(gro);
 if TE >= minTE
     TEdelay = floor((TE - minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 else
@@ -131,7 +126,9 @@ end
 minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
       + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
       + TEdelay...
-      + mr.calcDuration(gzPre) + Ny/Ry*mr.calcDuration(gro)...
+      + mr.calcDuration(gzPre)...
+      + (Ny/Ry - 1)*(mr.calcDuration(gro) + blipDuration)...
+      + mr.calcDuration(gro)...
       + mr.calcDuration(gzSpoil);
 if TR >= minTR
     TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
@@ -154,10 +151,10 @@ for frame = 1:Nframes
     % kz encoding loop
     z_locs = find(sum(omega,1));
     for iz = 1:length(z_locs)
-        gzPreTmp = mr.scaleGrad(gzPre,(z_locs(iz) - floor(Nz/2))/(Nz/2));
+        gzPreTmp = mr.scaleGrad(gzPre,-(z_locs(iz) - floor(Nz/2))/(Nz/2));
     
-        % Label the first block in each segment with the TRID (see Pulseq on GE manual)
-        TRID = iz;
+        % Label the first block in each "unique" section with TRID (see Pulseq on GE manual)
+        TRID = 1;
 
         % Fat-sat
         seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
@@ -184,20 +181,15 @@ for frame = 1:Nframes
             % Move to corner of k-space and sample the first line
             gyPreTmp = mr.scaleGrad(gyPre, (gyBlip.area*(y_locs(1) - 1) + gyPre.area)/gyPre.area);
             seq.addBlock(gxPre, gyPreTmp, gzPreTmp);
-            seq.addBlock(gro, adc, mr.scaleGrad(gyBlipUp, y_locs(2) - y_locs(1)));
     
             % Zip through k-space with EPI trajectory
-            for iy = 2:(length(y_locs) - 1)
-                gybd = mr.scaleGrad(gyBlipDown, y_locs(iy) - y_locs(iy-1));
-                gybu = mr.scaleGrad(gyBlipUp, y_locs(iy+1) - y_locs(iy));
-                gybdu = mr.addGradients({gybd, gybu}, sys);
-
-                seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)), gybdu);
+            for iy = 1:(length(y_locs) - 1)
+                seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)));
+                seq.addBlock(mr.scaleGrad(gyBlip, y_locs(iy + 1) - y_locs(iy)));
             end
-    
-            % Last line
-            seq.addBlock(adc, mr.scaleGrad(gro, (-1)^iy), mr.scaleGrad(gyBlipDown, y_locs(end) - y_locs(end-1)));
 
+            % Last line
+            seq.addBlock(adc, mr.scaleGrad(gro, (-1)^iy));
         % end ky encoding
 
         % spoil
@@ -231,7 +223,7 @@ system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
 %% Plot
 figure('WindowState','maximized');
-toppe.plotseq(sysGE, 'timeRange',[0, volumeTR]);
+toppe.plotseq(sysGE, 'timeRange',[0, TR]);
 
 %% Detailed checks that takes some time to run
 return;

@@ -15,7 +15,7 @@
 % For more information about preparing a Pulseq file for execution on GE scanners,
 % see the 'Pulseq on GE' manual.
 %
-% Modified July 12th, 2024 to acquire both polarities
+% Last modified August 26th, 2024
 
 %% Define experimental parameters
 setEPIparams;
@@ -37,13 +37,16 @@ fatsat.flip    = 90;      % degrees
 fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
 fatsat.tbw     = 3.5;     % time-bandwidth product
 fatsat.dur     = 8.0;     % pulse duration (ms)
+
 % RF waveform in Gauss
 wav = toppe.utils.rf.makeslr(fatsat.flip, fatsat.slThick, fatsat.tbw, fatsat.dur, 1e-6, toppe.systemspecs(), ...
-    'type', 'ex', ...    % fatsat pulse is a 90 so is of type 'ex', not 'st' (small-tip)
+    'type', 'ex', ... % fatsat pulse is a 90 so is of type 'ex', not 'st' (small-tip)
     'ftype', 'min', ...
     'writeModFile', false);
+
 % Convert from Gauss to Hz, and interpolate to sys.rfRasterTime
 rfp = rf2pulseq(wav, 4e-6, sys.rfRasterTime);
+
 % Create pulseq object
 % Try to account for the fact that makeArbitraryRf scales the pulse as follows:
 % signal = signal./abs(sum(signal.*opt.dwell))*flip/(2*pi);
@@ -53,10 +56,9 @@ rfsat = mr.makeArbitraryRf(rfp, ...
     flip_ang*abs(sum(rfp*sys.rfRasterTime))*(2*pi), ...
     'system', sys);
 rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure correct amplitude (Hz)
-rfsat.freqOffset = -fatOffresFreq;  % Hz
+rfsat.freqOffset = -fatOffresFreq; % Hz
 
 %% Generate temporally incoherent sampling masks
-% Save sampling masks for recon
 omegas = zeros(Ny,Nz,Nframes);
 for frame = 1:Nframes
     % Create pseudo-random 2D sampling mask. Save for recon
@@ -81,7 +83,7 @@ end
 
 % Start with the blips.
 gyBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('y', sys, 'Area', max_ky_step*deltak(2)), 1/max_ky_step),CRT,sys);
-gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', 0*deltak(3)),CRT,sys);  % unusued rn
+gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', 0*deltak(3)),CRT,sys); % unusued rn
 
 % Area and duration of the biggest blip
 if gyBlip.area > gzBlip.area
@@ -95,25 +97,14 @@ end
 % Readout trapezoid
 systmp = sys;
 systmp.maxGrad = deltak(1)/dwell;  % to ensure >= Nyquist sampling
-gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,systmp);
+gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1)),CRT,sys);
 
 % ADC event
-Tread = mr.calcDuration(gro) - blipDuration;
-if mod(round(Tread/dwell), sys.adcSamplesDivisor) % Ensure Nfid is a multiple of adcSamplesDivisor
-    Tread = (round(Tread/dwell) - mod(round(Tread/dwell), sys.adcSamplesDivisor))*dwell;
-end
+Tread = mr.calcDuration(gro);
+Tread = floor(Tread/CRT/sys.adcSamplesDivisor)*CRT*sys.adcSamplesDivisor;
 adc = mr.makeAdc(round(Tread/dwell), sys, ...
     'Duration', Tread, ...
-    'Delay', blipDuration/2);
-
-% Split blips at block boundary.
-[gyBlipUp, gyBlipDown] = mr.splitGradientAt(gyBlip, mr.calcDuration(gyBlip)/2);
-gyBlipUp.delay = mr.calcDuration(gro) - mr.calcDuration(gyBlip)/2;
-gyBlipDown.delay = 0;
-
-[gzBlipUp, gzBlipDown] = mr.splitGradientAt(gzBlip, mr.calcDuration(gzBlip)/2);
-gzBlipUp.delay = mr.calcDuration(gro) - mr.calcDuration(gzBlip)/2;
-gzBlipDown.delay = 0;
+    'Delay', sysGE.adcDeadTime*1e-6);
 
 % prephasers and spoilers
 gxPre = trap4ge(mr.makeTrapezoid('x', sys, ...
@@ -134,23 +125,30 @@ gzSpoil = trap4ge(mr.makeTrapezoid('z', sys, ...
 minTE = mr.calcDuration(rf)/2 - rf.delay...
       + mr.calcDuration(gzSSR)...
       + mr.calcDuration(gzPre)...
-      + (Ny/2 - 0.5) * mr.calcDuration(gro);
-TEdelay = floor((TE - minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
-if TE < minTE
-    warning('Minimum achievable TE exceeds prescribed TE')
+      + (Ny/2/Ry - 1) * (mr.calcDuration(gro) + blipDuration)...
+      + 0.5*mr.calcDuration(gro);
+if TE >= minTE
+    TEdelay = floor((TE - minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
+else
+    warning(sprintf('Minimum achievable TE (%d) exceeds prescribed TE (%d)',...
+                    minTE, TE))
+    TEdelay = 0;
 end
 
 %% Calculate delay to achieve desired TR
 minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
       + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
-      + mr.calcDuration(gzPre) + Ny*mr.calcDuration(gro)...
+      + TEdelay...
+      + mr.calcDuration(gzPre)...
+      + (Ny/Ry - 1)*(mr.calcDuration(gro) + blipDuration)...
+      + mr.calcDuration(gro)...
       + mr.calcDuration(gzSpoil);
-if TEdelay > 0
-    minTR = minTR + TEdelay
-end
-TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
-if TR < minTR
-    warning('Minimum achievable TR exceeds prescribed TR')
+if TR >= minTR
+    TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
+else
+    warning(sprintf('Minimum achievable TR (%d) exceeds prescribed TR (%d)',...
+                    minTR, TR))
+    TRdelay = 0;
 end
 
 %% Assemble sequence
@@ -160,8 +158,7 @@ seq = mr.Sequence(sys);
 rf_phase = 0;
 rf_inc = 0;
 
-for frame = -Ndummyframes:2
-
+for frame = -Ndummyframes:0
     % Convenience booleans for turning off adc and y gradient
     isDummyFrame = frame < 0;
     isCalFrame = frame >= 0;
@@ -172,50 +169,65 @@ for frame = -Ndummyframes:2
     elseif isCalFrame
         TRID = 2;
     end
-    
-    % Fat-sat
-    seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
-    seq.addBlock(gxSpoil, gzSpoil);
 
-    % RF spoiling
-    rf.phaseOffset = rf_phase/180*pi;
-    adc.phaseOffset = rf_phase/180*pi;
-    rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
-    rf_phase = mod(rf_phase+rf_inc, 360.0);
+    % kz encoding loop (not actually encoding for calibration scan)
+    for iz = 1:ceil(Nz/Rz)
+        gzPreTmp = mr.scaleGrad(gzPre,0); % Turn off z-encoding
 
-    % "Slice" selective RF excitation
-    seq.addBlock(rf, gzSS);
-    seq.addBlock(gzSSR);
+        % Fat-sat
+        seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
+        seq.addBlock(gxSpoil, gzSpoil);
 
-    % TE delay
-    if TE > minTE
-        seq.addBlock(mr.makeDelay(TEdelay));
-    end
+        % RF spoiling
+        rf.phaseOffset = rf_phase/180*pi;
+        adc.phaseOffset = rf_phase/180*pi;
+        rf_inc = mod(rf_inc + rfSpoilingInc, 360.0);
+        rf_phase = mod(rf_phase + rf_inc, 360.0);
 
-    if isDummyFrame
-        seq.addBlock(mr.makeDelay(mr.calcDuration(gxPre)...
-                                 +mr.calcDuration(gro)*Ny...
-                                 +TRdelay));
-    elseif isCalFrame
-        % Move to corner of k-space and sample the first line
-        seq.addBlock(gxPre);
-        seq.addBlock(adc, gro);
-   
-        % Zip through k-space with EPI trajectory
-        for ie = 2:(Ny - 1)
-            seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(ie-1)));
+        % Slab-selective RF excitation + rephase
+        seq.addBlock(rf,gzSS);
+        seq.addBlock(gzSSR);
+
+        % TE delay
+        if TE > minTE
+            seq.addBlock(mr.makeDelay(TEdelay));
         end
 
-        % Last line
-        seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(ie)));
-    end
+        % ky encoding (not actually encoding for calibration scan)
+        if isDummyFrame
+            % Move to corner of k-space and sample the first line
+            gyPreTmp = mr.scaleGrad(gyPre, 0);
+            seq.addBlock(gxPre, gyPreTmp, gzPreTmp);
+    
+            for iy = 1:ceil(Ny/Ry - 1)
+                seq.addBlock(mr.scaleGrad(gro, (-1)^(iy-1)));
+                seq.addBlock(mr.scaleGrad(gyBlip, 0));
+            end
 
-    % spoil
-    seq.addBlock(gxSpoil, gzSpoil);
+            % Last line
+            seq.addBlock(mr.scaleGrad(gro, (-1)^iy));
+        elseif isCalFrame
+            % Move to corner of k-space and sample the first line
+            gyPreTmp = mr.scaleGrad(gyPre, 0);
+            seq.addBlock(gxPre, gyPreTmp, gzPreTmp);
+    
+            for iy = 1:ceil(Ny/Ry - 1)
+                seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)));
+                seq.addBlock(mr.scaleGrad(gyBlip, 0));
+            end
 
-    % Achieve desired TR
-    if isCalFrame && TRdelay > 0
-        seq.addBlock(mr.makeDelay(TRdelay));
+            % Last line
+            seq.addBlock(adc, mr.scaleGrad(gro, (-1)^iy));
+        end
+        % end ky encoding
+
+        % spoil
+        seq.addBlock(gxSpoil, gzSpoil);
+
+        % Achieve desired TR
+        if TR > minTR
+            seq.addBlock(mr.makeDelay(TRdelay));
+        end
     end
 end
 
@@ -240,7 +252,7 @@ system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
 %% Plot
 figure('WindowState','maximized');
-toppe.plotseq(sysGE, 'timeRange', [0, (Ndummyframes + 1)*max([TR,minTR])]);
+toppe.plotseq(sysGE);
 
 return;
 %% Detailed check that takes some time to run
