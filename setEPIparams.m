@@ -40,7 +40,7 @@ end
 % Basic temporal parameters
 Ndummyframes = 4;                   % dummy frames to reach steady state for calibration
 NframesPerLoop = lcm(40,Nshots)/Nshots; % number of temporal frames to complete one RF spoil cycle
-Nloops = 4;                         % Temporal loops (number of unique sampling masks)
+Nloops = 10;                         % Temporal loops (number of unique sampling masks)
 Nframes = NframesPerLoop*Nloops;    
 
 % ADC stuff
@@ -54,7 +54,7 @@ T1 = 1500e-3;                       % T1 (s)
 
 % Exciting stuff
 alpha = 180/pi * acos(exp(-TR/T1)); % Ernst angle (degrees)
-rfDur = 8e-3;                       % RF pulse duration (s)
+rfDur = 6e-3;                       % RF pulse duration (s)
 rfTB  = 6;                          % RF pulse time-bandwidth product
 rfSpoilingInc = 117;                % RF spoiling increment (degrees)
 NcyclesSpoil = 2;                   % number of Gx and Gz spoiler cycles

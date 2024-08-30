@@ -5,11 +5,11 @@
 setGREparams; setEPIparams;
 
 % Params defined at scan
-Nloops = 4; % What you set toppe CV 8 to when running the scan
+Nloops = 10; % What you set toppe CV 8 to when running the scan
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20240809msEPI/';
+datdir = '/mnt/storage/rexfung/20240826randEPI/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
