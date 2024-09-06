@@ -2,20 +2,29 @@
 %
 % Generate a 2D pseudo random sampling pattern specified by a fully sampled
 % "ACS" region. Outside the ACS region, randomly sample with higher
-% probability towards the center.
+% probability towards the center, drawn from a Gaussian distribution.
 %
 % Input arguments:
 % N = [Ny Nz] = sampling grid dimensions. Positive vector of integers >= 1.
 % R = [Ry Rz] = acceleration factors. Positive vector of integers >= 1.
 % acs = [acs_y acs_z] = portions of k-space to be fully sampled as ACS
 % region. Vector of numbers between 0 and 1.
+% max_ky_step = the largest tolerable gap between subsequently sampled fast
+% PE (ky) locations.
 %
 % Output arguments:
 % omega = sampling mask. Boolean matrix of size [Ny Nz].
 %
-% Last modified Jul 26, 2024. Rex Fung
+% Design constraints:
+% 1. Even number of samples about the center of k-space along the fast PE
+% (ky) direction to ensure consistent TE
+% 2. If the randomly selected ky sampling locations are separated by gaps
+% exceeding max_ky_step, move the sampling location with the nearest
+% neightbor(s) to the midpoint of the largest gap.
+%
+% Last modified Sep 5th, 2024. Rex Fung
 
-function omega = randsamp2d(N, R, acs)
+function omega = randsamp2d(N, R, acs, max_ky_step)
     % Unpack and assert input arguments
     Ny = N(1); Nz = N(2);
     Ry = R(1); Rz = R(2);
@@ -55,9 +64,25 @@ function omega = randsamp2d(N, R, acs)
     % Loop through kz locations and generate sampling locations along ky
     for z = indices_z
         nacs_indices_samp_y = zeros(2,Ny_nacs/2);
-        for k = 1:2 % Sample the same amount on each half of k-space
-            half_line = datasample(nacs_indices_y(k,:), Ny_nacs/2, 'Replace', false, 'Weights',w_y(k,:));
-            nacs_indices_samp_y(k,:) = half_line;
+        for side = 1:2 % Sample the same amount on each half of k-space
+            half_line = sort(datasample(nacs_indices_y(side,:), Ny_nacs/2,...
+                                        'Replace', false,...
+                                        'Weights',w_y(side,:)));
+
+            % Limit spacing between consecutive ky lines
+            [gap,maxdex] = max(diff(half_line)); % find biggest gap
+            while gap > max_ky_step
+                % Find ky location with nearest neighbor(s)
+                [~,mindex] = min(conv(diff(half_line),[1 1], 'valid'));
+
+                % Move sampling location to the midpoint of largest gap
+                half_line(mindex + 1) = half_line(maxdex) + round(gap/2);
+
+                % Resort and update
+                half_line = sort(half_line);
+                [gap,maxdex] = max(diff(half_line));
+            end
+            nacs_indices_samp_y(side,:) = half_line;
         end
         indices_y = sort([acs_indices_y, reshape(nacs_indices_samp_y, 1, Ny_nacs)]);
         omega(indices_y,z) = true;
