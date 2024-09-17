@@ -252,7 +252,7 @@ system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
 %% Plot
 figure('WindowState','maximized');
-toppe.plotseq(sysGE);
+toppe.plotseq(sysGE, 'timeRange', [0 2*TR]);
 
 return;
 %% Detailed check that takes some time to run

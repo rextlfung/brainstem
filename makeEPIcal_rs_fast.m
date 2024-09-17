@@ -1,16 +1,28 @@
-% Pseudo-random 3D EPI sequence
-% Continuous readout gradient for speed.
-% Create blocks without splitting blips.
-% Represent readout gradients as arbitrary instead of trapezoids.
-% Rex Fung
-% Last modified August 30th, 2024
+% brainstem interleaved 3D-EPI sequence in Pulseq, calibration portion
+%
+% This short sequence first excites the volume to steady state, then 
+% acquires many readout lines without Gy and Gz blips to:
+% 1. Allow the scanner to tune receiver gains
+% 2. Collect data used for EPI ghost correciton
+%
+% This script creates the file '3DEPI_cal.seq', that can be executed directly
+% on Siemens MRI scanners using the Pulseq interpreter.
+% The .seq file can also be converted to a .tar file that can be executed on GE
+% scanners, see main.m.
+%
+% The experimental parameters below are chosen such that the sequence 
+% can be executed identically (to us precision) on Siemens and GE systems.
+% For more information about preparing a Pulseq file for execution on GE scanners,
+% see the 'Pulseq on GE' manual.
+%
+% Last modified August 26th, 2024
 
-%% Definte experiment parameters
+%% Define experimental parameters
 setEPIparams;
 
 %% Path and options
-seqname = '3DEPI_loop_rs';
-addpath('excitation');
+seqname = '3DEPI_cal';
+addpath('excitation/');
 
 %% Excitation pulse
 [rf, gzSS, gzSSR] = mr.makeSincPulse(alpha/180*pi,...
@@ -63,7 +75,7 @@ deltak = 1./fov;
 
 % Find the biggest step in ky for setting blip duration
 biggest_ky_step = 0;
-for frame = 1:NframesPerLoop
+for frame = 1:Nframes
     for z = 1:Nz
         biggest_ky_step = max([biggest_ky_step, max(diff(find(omegas(:,z,frame))))]);
     end
@@ -143,25 +155,30 @@ else
                     minTR, TR))
     TRdelay = 0;
 end
-%% Assemble sequence
-seq = mr.Sequence(sys);           
 
-% RF spoiling trackers
+%% Assemble sequence
+seq = mr.Sequence(sys);
+
+% RF spoiling stuff
 rf_phase = 0;
 rf_inc = 0;
 
-for frame = 1:NframesPerLoop
-    fprintf('Writing frame %d\n', frame)
-    % Load in kz-ky sampling mask
-    omega = omegas(:,:,frame);
+for frame = -Ndummyframes:0
+    % Convenience booleans for turning off adc
+    isDummyFrame = frame < 0;
+    isCalFrame = frame >= 0;
 
-    % kz encoding loop
+    % Label the first block in each segment with the TRID (see Pulseq on GE manual)
+    if isDummyFrame
+        TRID = 1;
+    elseif isCalFrame
+        TRID = 2;
+    end
+
+    % kz encoding loop (fake)
     z_locs = find(sum(omega,1));
     for iz = 1:length(z_locs)
-        gzPreTmp = mr.scaleGrad(gzPre,-(z_locs(iz) - floor(Nz/2))/(Nz/2));
-    
-        % Label the first block in each "unique" section with TRID (see Pulseq on GE manual)
-        TRID = 1;
+        gzPreTmp = mr.scaleGrad(gzPre, 0);
 
         % Fat-sat
         seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
@@ -182,22 +199,31 @@ for frame = 1:NframesPerLoop
             seq.addBlock(mr.makeDelay(TEdelay));
         end
 
-        % ky encoding
+        % ky encoding (fake)
         y_locs = find(omega(:,z_locs(iz)));
 
             % Move to corner of k-space
-            gyPreTmp = mr.scaleGrad(gyPre, (gyBlip.area*(y_locs(1) - 1) + gyPre.area)/gyPre.area);
+            gyPreTmp = mr.scaleGrad(gyPre, 0);
             seq.addBlock(gxPre, gyPreTmp, gzPreTmp);
     
             % Zip through k-space with EPI trajectory
             seq.addBlock(gro1);
             for iy = 1:(length(y_locs) - 1)
-                seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)),...
-                    mr.scaleGrad(gyBlip, y_locs(iy + 1) - y_locs(iy)));
+                if isCalFrame
+                    seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)),...
+                        mr.scaleGrad(gyBlip, 0));
+                else
+                    seq.addBlock(mr.scaleGrad(gro, (-1)^(iy-1)),...
+                        mr.scaleGrad(gyBlip, 0));
+                end
             end
 
             % Last line
-            seq.addBlock(adc, mr.scaleGrad(gro2, (-1)^iy));
+            if isCalFrame
+                seq.addBlock(adc, mr.scaleGrad(gro2, (-1)^iy));
+            else
+                seq.addBlock(mr.scaleGrad(gro2, (-1)^iy));
+            end
         % end ky encoding
 
         % spoil
@@ -211,7 +237,7 @@ for frame = 1:NframesPerLoop
 end
 
 %% Check sequence timing
-[ok, error_report] = seq.checkTiming;
+[ok, error_report]=seq.checkTiming;
 if (ok)
     fprintf('Timing check passed successfully\n');
 else
@@ -231,16 +257,14 @@ system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
 %% Plot
 figure('WindowState','maximized');
-% plot(seq, 'timeRange', [0 TR]);
-toppe.plotseq(sysGE, 'timeRange',[0, 2*TR]);
+toppe.plotseq(sysGE, 'timeRange', [0 (Ndummyframes + 1)*TR]);
 
 return;
-%% Detailed checks that takes some time to run
+%% Detailed check that takes some time to run
 
 % k-space trajectory calculation and plot
 [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
-figure('WindowState','maximized');
-plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
+figure; plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
 axis('equal'); % enforce aspect ratio for the correct trajectory display
 hold;plot(ktraj_adc(1,:),ktraj_adc(2,:),'r.'); % plot the sampling points
 title('full k-space trajectory (k_x x k_y)');

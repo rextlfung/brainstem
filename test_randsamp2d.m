@@ -4,13 +4,14 @@ load mristack;
 close all;
 
 %% Extract one slice
-img = squeeze(img_final(:,:,size(img_final,3)/2,:));
-img = repmat(img,1,1,15);
-% img = repmat(double(mristack(:,:,9)).',1,1,10);
+% img = squeeze(img_final(:,:,size(img_final,3)/2,:));
+% img = repmat(img,1,1,15);
+img = repmat(double(mristack(:,:,9)).',1,1,10);
 
 N = size(img,1,2);
 R = [3 3];
 acs = [1/8 1/8];
+max_ky_step = N(1)/16;
 
 Nframes = size(img,3);
 xy_masks = false(N(1),N(2),Nframes);
@@ -20,11 +21,11 @@ figure('WindowState','maximized');
 tiledlayout('flow');
 for t = 1:Nframes
     rng(t);
-    omega = randsamp2d(N,R,acs);
+    omega = randsamp2d(N,R,acs,max_ky_step);
     xy_masks(:,:,t) = omega;
 
-    % nexttile; im(omega); title(sprintf('Frame %d',round(t)))
-    % xlabel('kx'); ylabel('ky');
+    nexttile; im(omega); title(sprintf('Frame %d',round(t)))
+    xlabel('kx'); ylabel('ky');
 end
 
 %% Plot fully sampled images
@@ -42,6 +43,7 @@ figure('WindowState','maximized');
 im('col',Nframes/2,'row',2,img_us,'cbar')
 title(sprintf('Pseudo-randomly undersampled images. Rx = %d, Ry = %d',R(1),R(2)));
 
+return;
 %% Multicoil case
 Ncoils = 32;
 

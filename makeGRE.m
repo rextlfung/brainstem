@@ -157,7 +157,7 @@ for iZ = -nDummyZLoops:Nz_gre
 end
 
 %% Check sequence timing
-[ok, error_report]=seq.checkTiming;
+[ok, error_report] = seq.checkTiming;
 if (ok)
     fprintf('Timing check passed successfully\n');
 else
@@ -168,26 +168,24 @@ end
 
 %% Output for execution
 seq.setDefinition('FOV', fov_gre);
-seq.setDefinition('Name', 'b0');
-seq.write('b0.seq');
+seq.setDefinition('Name', 'gre');
+seq.write('gre.seq');
 
 %% Convert to .tar file for GE
-toGE = true;
-if toGE
-    sysGE = toppe.systemspecs('maxGrad', 5, ...   % G/cm
-        'maxSlew', 20, ...               % G/cm/ms
-        'maxRF', 0.05, ...               % Gauss. Must be >= peak RF in sequence.
-        'maxView', Ny_gre, ...               % Determines slice/view index in data file
-        'rfDeadTime', 100, ...           % us
-        'rfRingdownTime', 60, ...        % us
-        'adcDeadTime', 40, ...           % us
-        'psd_rf_wait', 148, ...          % RF/gradient delay (us)
-        'psd_grd_wait', 156);            % ADC/gradient delay (us)
+seq2ge('gre.seq', sysGE, 'gre.tar');
+system('tar -xvf gre.tar');
 
-    seq2ge('b0.seq', sysGE, 'b0.tar');
-    system('tar -xvf b0.tar');
-end
-
-%% Plot
+return;
+%% Plot k-space trajectory
+[ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
 figure('WindowState','maximized');
-toppe.plotseq(sysGE);
+plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
+axis('equal'); % enforce aspect ratio for the correct trajectory display
+hold;plot(ktraj_adc(1,:),ktraj_adc(2,:),'r.'); % plot the sampling points
+title('full k-space trajectory (k_x x k_y)');
+
+return;
+%% Optional slow step, but useful for testing during development,
+% e.g., for the real TE, TR or for staying within slewrate limits
+rep = seq.testReport;
+fprintf([rep{:}]);
