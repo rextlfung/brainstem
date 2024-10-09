@@ -22,10 +22,10 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
 % Spatial parameters (different from EPI scans)
-fov_gre = [200, 200, 200]*1e-3; % field of view (m)
 res_gre = [2, 2, 2]*1e-3; % resolution (m)
-N_gre = fov_gre./res_gre; % acquisiton tensor size
-Nx_gre = N_gre(1); Ny_gre = N_gre(2); Nz_gre = N_gre(3); 
+N_gre = [100, 100, 100]; % acquisiton tensor size
+Nx_gre = N_gre(1); Ny_gre = N_gre(2); Nz_gre = N_gre(3);
+fov_gre = N_gre.*res_gre; % field of view (m)
 
 % Other acquisition params
 dwell = 4e-6;                   % ADC sample time (s)
@@ -38,6 +38,6 @@ alpha = 180/pi*acos(exp(-TR/T1));  % flip angle (degrees)
 
 % Sequence parameters
 rfDur = 0.4e-3;
-rfSpoilingInc = 117;            % RF spoiling increment
+rf_phase_0 = 117;               % RF spoiling initial phase (degrees)
 nCyclesSpoil = 2;               % number of spoiler cycles
 Tpre = 1.0e-3;                  % prephasing trapezoid duration

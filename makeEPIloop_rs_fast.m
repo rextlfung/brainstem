@@ -47,7 +47,7 @@ rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure corre
 rfsat.freqOffset = -fatOffresFreq; % Hz
 
 %% Generate temporally incoherent sampling masks
-omegas = zeros(Ny,Nz,Nframes);
+omegas = zeros(Ny,Nz,NframesPerLoop);
 for frame = 1:NframesPerLoop
     % Create pseudo-random 2D sampling mask. Save for recon
     rng(frame); % A different mask per frame
@@ -97,8 +97,7 @@ gro1.delay = 0; % This piece is necessary at the very beginning of the readout
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
 Nfid = round(Tread/dwell/sys.adcSamplesDivisor)*sys.adcSamplesDivisor;
-adc = mr.makeAdc(Nfid, sys, 'Dwell', dwell, 'Delay', 0);
-adc.delay = 0;
+adc = mr.makeAdc(Nfid, sys, 'Dwell', dwell);
 
 % Delay blips so they play after adc stops
 gyBlip.delay = Tread;
@@ -117,10 +116,10 @@ gzSpoil = trap4ge(mr.makeTrapezoid('z', sys, ...
     'Area', Nz*deltak(3)*NcyclesSpoil),CRT,sys);
 
 %% Calculate delay to achieve desired TE
-minTE = mr.calcDuration(rf)/2 - rf.delay...
+minTE = 0.5*mr.calcDuration(rf)...
       + mr.calcDuration(gzSSR)...
-      + Tpre...
-      + (ceil(Ny/Ry)/2 - 0.5) * (mr.calcDuration(gro));
+      + max([mr.calcDuration(gxPre), mr.calcDuration(gyPre), mr.calcDuration(gzPre)])...
+      + (2*ceil(Ny/Ry/2)/2 - 0.5) * mr.calcDuration(gro);
 if TE >= minTE
     TEdelay = floor((TE - minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 else
@@ -130,12 +129,14 @@ else
 end
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
-      + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
+minTR = mr.calcDuration(rfsat)...
+      + max([mr.calcDuration(gxSpoil), mr.calcDuration(gzSpoil)])...
+      + max([mr.calcDuration(rf), mr.calcDuration(gzSS)])...
+      + mr.calcDuration(gzSSR)...
       + TEdelay...
-      + Tpre...
-      + ceil(Ny/Ry)*(mr.calcDuration(gro))...
-      + mr.calcDuration(gzSpoil);
+      + max([mr.calcDuration(gxPre), mr.calcDuration(gyPre), mr.calcDuration(gzPre)])...
+      + 2*ceil(Ny/Ry/2) * mr.calcDuration(gro)...
+      + max([mr.calcDuration(gxSpoil), mr.calcDuration(gzSpoil)]);
 if TR >= minTR
     TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 else
@@ -143,12 +144,12 @@ else
                     minTR, TR))
     TRdelay = 0;
 end
+
 %% Assemble sequence
 seq = mr.Sequence(sys);           
 
 % RF spoiling trackers
-rf_phase = 0;
-rf_inc = 0;
+rf_count = 1;
 
 for frame = 1:NframesPerLoop
     fprintf('Writing frame %d\n', frame)
@@ -168,10 +169,10 @@ for frame = 1:NframesPerLoop
         seq.addBlock(gxSpoil, gzSpoil);
 
         % RF spoiling
+        rf_phase = mod(0.5 * rf_phase_0 * rf_count^2, 360.0);
         rf.phaseOffset = rf_phase/180*pi;
         adc.phaseOffset = rf_phase/180*pi;
-        rf_inc = mod(rf_inc + rfSpoilingInc, 360.0);
-        rf_phase = mod(rf_phase + rf_inc, 360.0);
+        rf_count = rf_count + 1;
 
         % Slab-selective RF excitation + rephase
         seq.addBlock(rf,gzSS);

@@ -36,7 +36,7 @@ gzSSR = trap4ge(gzSSR,CRT,sys);
 fatsat.flip    = 90;      % degrees
 fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
 fatsat.tbw     = 3.5;     % time-bandwidth product
-fatsat.dur     = 8.0;     % pulse duration (ms)
+fatsat.dur     = 6.0;     % pulse duration (ms)
 
 % RF waveform in Gauss
 wav = toppe.utils.rf.makeslr(fatsat.flip, fatsat.slThick, fatsat.tbw, fatsat.dur, 1e-6, toppe.systemspecs(), ...
@@ -59,7 +59,7 @@ rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure corre
 rfsat.freqOffset = -fatOffresFreq; % Hz
 
 %% Generate temporally incoherent sampling masks
-omegas = zeros(Ny,Nz,Nframes);
+omegas = zeros(Ny,Nz,NframesPerLoop);
 for frame = 1:NframesPerLoop
     % Create pseudo-random 2D sampling mask. Save for recon
     rng(frame); % A different mask per frame
@@ -75,7 +75,7 @@ deltak = 1./fov;
 
 % Find the biggest step in ky for setting blip duration
 biggest_ky_step = 0;
-for frame = 1:Nframes
+for frame = 1:NframesPerLoop
     for z = 1:Nz
         biggest_ky_step = max([biggest_ky_step, max(diff(find(omegas(:,z,frame))))]);
     end
@@ -129,10 +129,10 @@ gzSpoil = trap4ge(mr.makeTrapezoid('z', sys, ...
     'Area', Nz*deltak(3)*NcyclesSpoil),CRT,sys);
 
 %% Calculate delay to achieve desired TE
-minTE = mr.calcDuration(rf)/2 - rf.delay...
+minTE = 0.5*mr.calcDuration(rf)...
       + mr.calcDuration(gzSSR)...
-      + Tpre...
-      + (ceil(Ny/Ry)/2 - 0.5) * (mr.calcDuration(gro));
+      + max([mr.calcDuration(gxPre), mr.calcDuration(gyPre), mr.calcDuration(gzPre)])...
+      + (2*ceil(Ny/Ry/2)/2 - 0.5) * mr.calcDuration(gro);
 if TE >= minTE
     TEdelay = floor((TE - minTE)/sys.blockDurationRaster) * sys.blockDurationRaster;
 else
@@ -142,12 +142,14 @@ else
 end
 
 %% Calculate delay to achieve desired TR
-minTR = mr.calcDuration(rfsat) + mr.calcDuration(gzSpoil)...
-      + mr.calcDuration(gzSS) + mr.calcDuration(gzSSR)...
+minTR = mr.calcDuration(rfsat)...
+      + max([mr.calcDuration(gxSpoil), mr.calcDuration(gzSpoil)])...
+      + max([mr.calcDuration(rf), mr.calcDuration(gzSS)])...
+      + mr.calcDuration(gzSSR)...
       + TEdelay...
-      + Tpre...
-      + ceil(Ny/Ry)*(mr.calcDuration(gro))...
-      + mr.calcDuration(gzSpoil);
+      + max([mr.calcDuration(gxPre), mr.calcDuration(gyPre), mr.calcDuration(gzPre)])...
+      + 2*ceil(Ny/Ry/2) * mr.calcDuration(gro)...
+      + max([mr.calcDuration(gxSpoil), mr.calcDuration(gzSpoil)]);
 if TR >= minTR
     TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
 else
@@ -159,9 +161,8 @@ end
 %% Assemble sequence
 seq = mr.Sequence(sys);
 
-% RF spoiling stuff
-rf_phase = 0;
-rf_inc = 0;
+% RF spoiling trackers
+rf_count = 1;
 
 for frame = -Ndummyframes:0
     % Convenience booleans for turning off adc
@@ -185,10 +186,11 @@ for frame = -Ndummyframes:0
         seq.addBlock(gxSpoil, gzSpoil);
 
         % RF spoiling
+        rf_phase = mod(0.5 * rf_phase * rf_count^2, 360.0);
         rf.phaseOffset = rf_phase/180*pi;
         adc.phaseOffset = rf_phase/180*pi;
-        rf_inc = mod(rf_inc + rfSpoilingInc, 360.0);
-        rf_phase = mod(rf_phase + rf_inc, 360.0);
+        rf_count = rf_count + 1;
+        
 
         % Slab-selective RF excitation + rephase
         seq.addBlock(rf,gzSS);

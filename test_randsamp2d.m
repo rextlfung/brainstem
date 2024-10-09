@@ -4,9 +4,8 @@ load mristack;
 close all;
 
 %% Extract one slice
-% img = squeeze(img_final(:,:,size(img_final,3)/2,:));
-% img = repmat(img,1,1,15);
-img = repmat(double(mristack(:,:,9)).',1,1,10);
+img = squeeze(img_final(:,:,size(img_final,3)/2,:));
+% img = repmat(double(mristack(:,:,9)).',1,1,20);
 
 N = size(img,1,2);
 R = [3 3];

@@ -11,13 +11,13 @@ Nloops = 15; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20240912randEPIbrain3x3/';
+datdir = '/mnt/storage/rexfung/20241006ball5min/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
 
 % Options
-doSENSE = true;
+doSENSE = false;
 showEPIphaseDiff = true;
 
 %% Load data
@@ -50,15 +50,15 @@ fprintf('Max imag part of loop data: %d\n', max(imag(ksp_loop_raw(:))))
 
 %% Compute odd/even delays using calibration (blipless) data
 % Reshape and permute calibration data (a single frame w/out blips)
-ksp_cal = ksp_cal_raw(:,:,1:ceil(Ny/Ry)*ceil(Nz/Rz)); % discard trailing data
-ksp_cal = reshape(ksp_cal,Nfid,Ncoils,ceil(Ny/Ry), ceil(Nz/Rz));
+ksp_cal = ksp_cal_raw(:,:,1:2*ceil(Ny/Ry/2)*ceil(Nz/Rz)); % discard trailing data
+ksp_cal = reshape(ksp_cal,Nfid,Ncoils,2*ceil(Ny/Ry/2), ceil(Nz/Rz));
 ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny/Ry Nz/Rz Ncoils]
 
 % Estimate k-space center offset due to gradient delay
-cal_data = reshape(abs(ksp_cal),Nfid,ceil(Ny/Ry),ceil(Nz/Rz),Ncoils);
+cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),ceil(Nz/Rz),Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
 [M, I] = max(cal_data,[],1);
-delay = Nfid - 2*mean(I,'all'); delay = -1.5;
+delay = Nfid/2 - mean(I,'all');
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -79,17 +79,23 @@ fprintf('Linear term (radians/fov): %f\n', a(2));
 
 %% Grid and apply odd/even correction to loop data
 % Reshape and permute loop data
-ksp_loop = ksp_loop_raw(:,:,1:ceil(Ny/Ry)*ceil(Nz/Rz)*Nframes); % discard trailing empty data
-ksp_loop = reshape(ksp_loop,Nfid,Ncoils,ceil(Ny/Ry),ceil(Nz/Rz),Nframes);
+ksp_loop = ksp_loop_raw(:,:,1:2*ceil(Ny/Ry/2)*ceil(Nz/Rz)*Nframes); % discard trailing empty data
+ksp_loop = reshape(ksp_loop,Nfid,Ncoils,2*ceil(Ny/Ry/2),ceil(Nz/Rz),Nframes);
 ksp_loop = permute(ksp_loop,[1 3 4 2 5]); % [Nfid Ny/Ry Nz/Rz Ncoils Nframes]
 
 % Grid along kx direction via NUFFT (takes a while)
+ksp_loop_cart = zeros([Nx,size(ksp_loop,2:ndims(ksp_loop))]);
 tic
-    ksp_loop_cart = hmriutils.epi.rampsampepi2cart(ksp_loop, kxo, kxe, Nx, fov(1)*100, 'nufft');
+    parfor frame = 1:Nframes
+        tmp = squeeze(ksp_loop(:,:,:,:,frame));
+        tmp1 = hmriutils.epi.rampsampepi2cart(tmp, kxo, kxe, Nx, fov(1)*100, 'nufft');
+        ksp_loop_cart(:,:,:,:,frame) = tmp1;
+    end
+    delete(gcp('nocreate'))
 toc
 
 % Phase correct along kx direction
-ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a);
+ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a); return; 
 
 %% Create zero-filled k-space data
 ksp_zf = zeros(Nx,Ny,Nz,Ncoils,Nframes);
@@ -104,6 +110,7 @@ end
 
 % Allocate data
 ksp_zf(:,permute(repmat(omegas,1,1,1,Ncoils),[1 2 4 3])) = ksp_loop_cart(:,:);
+return;
 
 %% IFFT to get images
 imgs_mc = ifftshift(ifft(...
@@ -115,6 +122,7 @@ imgs_mc = ifftshift(ifft(...
                      , Nz, 3)...
                     );
 
+clear ksp_zf ksp_loop_cart ksp_loop ksp_loop_raw; 
 %% Get sensitivity maps with either BART or PISCO
 smaps_technique = 'pisco';
 if doSENSE
@@ -131,7 +139,7 @@ if doSENSE
         kernel_shape = 1;
         FFT_nullspace_C_calculation = 1;
         PowerIteration_G_nullspace_vectors = 1;
-        M = 10;
+        M = 20;
         PowerIteration_flag_convergence = 1;
         PowerIteration_flag_auto = 1;
         FFT_interpolation = 1;
@@ -149,10 +157,10 @@ if doSENSE
         
             % Compute smaps slice-by-slice
             tmp = ifftshift(ifft(fftshift(ksp_gre),Nz_gre,3));
-            smaps = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
-            eigmaps = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
+            smaps_raw = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
+            eigmaps = zeros(Nx_gre, Ny_gre, Nz_gre);
             
-            for z = 1:Nz_gre
+            parfor z = 1:Nz_gre
                 [smaps_tmp, eigvals] = PISCO_senseMaps_estimation(...
                     squeeze(tmp(cal_index_x,cal_index_y,z,:)),...
                     [Nx_gre, Ny_gre],...
@@ -172,22 +180,25 @@ if doSENSE
         
                 % Normalize
                 smaps_tmp = smaps_tmp./sqrt(sum(abs(smaps_tmp).^2, 3));
-
-                % Mask
-                smaps_tmp(repmat(eigvals>0.1, 1, 1, 32)) = 0;
         
                 % Allocate
-                smaps(:,:,z,:) = smaps_tmp;
-                eigmaps(:,:,z) = eigvals;
+                smaps_raw(:,:,z,:) = smaps_tmp;
+                eigmaps(:,:,z,:) = eigvals;
             end
+            delete(gcp('nocreate'))
         toc
     elseif strcmp(smaps_technique,'bart')
         fprintf('Estimating sensitivity maps from GRE data via BART...\n')
         tic
             [calib, emaps] = bart('ecalib -r 20', ksp_gre);
-            smaps = squeeze(calib(:,:,:,:,1));
+            smaps_raw = squeeze(calib(:,:,:,:,1));
         toc
     end
+
+    % Mask
+    smaps = smaps_raw;
+    % smaps(repmat(eigmaps>8*threshold,1,1,1,32)) = 0;
+
     % Crop in z to match EPI FoV
     z_start = round((fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre + 1);
     z_end = round(Nz_gre - (fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre);
@@ -200,7 +211,7 @@ if doSENSE
     end
     smaps = smaps_new; clear smaps_new;
     
-    % Align x-direction of smaps
+    % Align x-direction of smaps with EPI data
     smaps = flip(smaps,1);
 end
 

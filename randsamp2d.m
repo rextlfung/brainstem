@@ -25,7 +25,7 @@
 % Last modified Sep 5th, 2024. Rex Fung
 
 function omega = randsamp2d(N, R, acs, max_ky_step)
-    % Unpack and assert input arguments
+    % Unpack and validate input arguments
     Ny = N(1); Nz = N(2);
     Ry = R(1); Rz = R(2);
     acs_y = acs(1); acs_z = acs(2);

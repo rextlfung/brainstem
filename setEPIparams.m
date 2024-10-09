@@ -17,17 +17,17 @@ CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 mode = "singleshot";
 
 % Basic spatial parameters
-fov = [180, 180, 60]*1e-3; % field of view (m)
-res = [1.5, 1.5, 1.5]*1e-3; % resolution (m)
-N = round(fov./res); % acquisiton tensor size
-Nx = N(1); Ny = N(2); Nz = N(3); 
+res = [1.5 1.5 1.5]*1e-3; % resolution (m)
+N = [120, 120, 40]; % acquisiton tensor size
+Nx = N(1); Ny = N(2); Nz = N(3);
+fov = N.*res; % field of view (m)
 
 % Random sampling parameters
 if strcmp(mode, "singleshot")
-    Ry = 2; Rz = 3;
+    Ry = 3; Rz = 3;
     R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
-    acs = [1/8 1/8];                % Central portion of ky-kz space to fully sample
-    max_ky_step = round(Ny/Ry/4);   % Maximum gap in fast PE direction
+    acs = [1/16 1/16];                % Central portion of ky-kz space to fully sample
+    max_ky_step = round(Ny/16);   % Maximum gap in fast PE direction
 else
     Ry = 1; Rz = 1;
 end
@@ -57,7 +57,7 @@ T1 = 1500e-3;                       % T1 (s)
 alpha = 180/pi * acos(exp(-TR/T1)); % Ernst angle (degrees)
 rfDur = 2e-3;                       % RF pulse duration (s)
 rfTB  = 6;                          % RF pulse time-bandwidth product
-rfSpoilingInc = 117;                % RF spoiling increment (degrees)
+rf_phase_0 = 117;                   % RF spoiling initial phase (degrees)
 NcyclesSpoil = 2;                   % number of Gx and Gz spoiler cycles
 
 % Fat Sat Stuff

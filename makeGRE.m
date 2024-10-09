@@ -1,6 +1,7 @@
 % Pulseq script for acquiring GRE data
 %
 % Modified June 21, 2024, for acquiring GRE data for sensitivity maps
+addpath('excitation/');
 
 % Define params (edit setGREparams to change)
 setGREparams;
@@ -100,8 +101,9 @@ delayTR = ceil((TR-TRmin)/seq.gradRasterTime)*seq.gradRasterTime;
 % iZ > 0: Image acquisition
 
 nDummyZLoops = 4;
-rf_phase = 0;
-rf_inc = 0;
+
+% RF spoiling trackers
+rf_count = 1;
 
 lastmsg = [];
 for iZ = -nDummyZLoops:Nz_gre
@@ -126,10 +128,10 @@ for iZ = -nDummyZLoops:Nz_gre
         zStep = (iZ > 0) * pe2Steps(max(1,iZ));
 
         % RF spoiling
+        rf_phase = mod(0.5 * rf_phase_0 * rf_count^2, 360.0);
         rf.phaseOffset = rf_phase/180*pi;
         adc.phaseOffset = rf_phase/180*pi;
-        rf_inc = mod(rf_inc+rfSpoilingInc, 360.0);
-        rf_phase = mod(rf_phase+rf_inc, 360.0);
+        rf_count = rf_count + 1;
         
         % Excitation
         % Mark start of segment (block group) by adding label.
