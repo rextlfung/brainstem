@@ -7,11 +7,11 @@
 setGREparams; setEPIparams;
 
 % Total number of frames
-Nloops = 15; % Defined as toppe cv 8 at scanner
+Nloops = 8; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20241006ball5min/';
+datdir = '/mnt/storage/rexfung/20241010fingertap/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
@@ -39,6 +39,11 @@ ksp_loop_raw = ksp_loop_raw(:,:,(size(ksp_loop_raw,3) + 1):end);
 
 % discard calibration portion for gre data
 ksp_gre_raw = ksp_gre_raw(:,:,(Ny_gre + 1):end);
+
+% discard unusual zeros in the middle of the data (currently unknown why
+% they exist) TODO: FIND OUT WHY
+non_zero_indices = (squeeze(sum(abs(ksp_loop_raw), [1 2])) ~= 0);
+ksp_loop_raw = ksp_loop_raw(:,:,non_zero_indices);
 
 % Print max real and imag parts to check for reasonable magnitude
 fprintf('Max real part of gre data: %d\n', max(real(ksp_gre_raw(:))))
@@ -95,7 +100,7 @@ tic
 toc
 
 % Phase correct along kx direction
-ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a); return; 
+ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a);
 
 %% Create zero-filled k-space data
 ksp_zf = zeros(Nx,Ny,Nz,Ncoils,Nframes);
@@ -110,7 +115,6 @@ end
 
 % Allocate data
 ksp_zf(:,permute(repmat(omegas,1,1,1,Ncoils),[1 2 4 3])) = ksp_loop_cart(:,:);
-return;
 
 %% IFFT to get images
 imgs_mc = ifftshift(ifft(...
@@ -122,7 +126,7 @@ imgs_mc = ifftshift(ifft(...
                      , Nz, 3)...
                     );
 
-clear ksp_zf ksp_loop_cart ksp_loop ksp_loop_raw; 
+clear ksp_loop_cart ksp_loop ksp_loop_raw; 
 %% Get sensitivity maps with either BART or PISCO
 smaps_technique = 'pisco';
 if doSENSE

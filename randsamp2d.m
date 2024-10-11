@@ -67,10 +67,18 @@ function omega = randsamp2d(N, R, acs, max_ky_step)
         for side = 1:2 % Sample the same amount on each half of k-space
             half_line = sort(datasample(nacs_indices_y(side,:), Ny_nacs/2,...
                                         'Replace', false,...
-                                        'Weights',w_y(side,:)));
+                                        'Weights', w_y(side,:)));
 
             % Limit spacing between consecutive ky lines
+            % Add in edge of ACS region to prevent large gap
+            if side == 1
+                half_line = [half_line, acs_indices_y(1)];
+            else
+                half_line = [acs_indices_y(end), half_line];
+            end
+
             [gap,maxdex] = max(diff(half_line)); % find biggest gap
+           
             while gap > max_ky_step
                 % Find ky location with nearest neighbor(s)
                 [~,mindex] = min(conv(diff(half_line),[1 1], 'valid'));
@@ -80,8 +88,16 @@ function omega = randsamp2d(N, R, acs, max_ky_step)
 
                 % Resort and update
                 half_line = sort(half_line);
-                [gap,maxdex] = max(diff(half_line));
+                [gap,maxdex] = max(diff(half_line)); 
             end
+
+            % remove edge of ACS index from NACS indices
+            if side == 1
+                half_line = half_line(1:end-1);
+            else
+                half_line = half_line(2:end);
+            end
+
             nacs_indices_samp_y(side,:) = half_line;
         end
         indices_y = sort([acs_indices_y, reshape(nacs_indices_samp_y, 1, Ny_nacs)]);

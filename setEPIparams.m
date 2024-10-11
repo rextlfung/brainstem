@@ -17,8 +17,8 @@ CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 mode = "singleshot";
 
 % Basic spatial parameters
-res = [1.5 1.5 1.5]*1e-3; % resolution (m)
-N = [120, 120, 40]; % acquisiton tensor size
+res = [1.8 1.8 1.8]*1e-3; % resolution (m)
+N = [100, 100, 50]; % acquisiton tensor size
 Nx = N(1); Ny = N(2); Nz = N(3);
 fov = N.*res; % field of view (m)
 
@@ -26,7 +26,7 @@ fov = N.*res; % field of view (m)
 if strcmp(mode, "singleshot")
     Ry = 3; Rz = 3;
     R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
-    acs = [1/16 1/16];                % Central portion of ky-kz space to fully sample
+    acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
     max_ky_step = round(Ny/16);   % Maximum gap in fast PE direction
 else
     Ry = 1; Rz = 1;

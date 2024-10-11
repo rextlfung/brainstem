@@ -27,6 +27,7 @@ for t = 1:Nframes
     xlabel('kx'); ylabel('ky');
 end
 
+return;
 %% Plot fully sampled images
 figure('WindowState','maximized');
 im('col',Nframes/2,'row',2,img,'cbar')

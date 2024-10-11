@@ -66,6 +66,10 @@ biggest_ky_step = 0;
 for frame = 1:NframesPerLoop
     for z = 1:Nz
         biggest_ky_step = max([biggest_ky_step, max(diff(find(omegas(:,z,frame))))]);
+        if biggest_ky_step > max_ky_step
+            warning('Biggest ky step exceeds prescribed constraint');
+            pause();
+        end
     end
 end
 
