@@ -24,7 +24,7 @@ gzSSR = trap4ge(gzSSR,CRT,sys);
 fatsat.flip    = 90;      % degrees
 fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
 fatsat.tbw     = 3.5;     % time-bandwidth product
-fatsat.dur     = 8.0;     % pulse duration (ms)
+fatsat.dur     = 6.0;     % pulse duration (ms)
 
 % RF waveform in Gauss
 wav = toppe.utils.rf.makeslr(fatsat.flip, fatsat.slThick, fatsat.tbw, fatsat.dur, 1e-6, toppe.systemspecs(), ...
