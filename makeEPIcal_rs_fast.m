@@ -25,9 +25,10 @@ seqname = '3DEPI_cal';
 addpath('excitation/');
 
 %% Excitation pulse
+% Target a slightly thinner slice to alleviate aliasing
 [rf, gzSS, gzSSR] = mr.makeSincPulse(alpha/180*pi,...
                                      'duration',rfDur,...
-                                     'sliceThickness',fov(3),...
+                                     'sliceThickness',0.9*fov(3),...
                                      'system',sys);
 gzSS = trap4ge(gzSS,CRT,sys);
 gzSSR = trap4ge(gzSSR,CRT,sys);
@@ -35,7 +36,7 @@ gzSSR = trap4ge(gzSSR,CRT,sys);
 %% Fat-sat
 fatsat.flip    = 90;      % degrees
 fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
-fatsat.tbw     = 3.5;     % time-bandwidth product
+fatsat.tbw     = 3;     % time-bandwidth product
 fatsat.dur     = 6.0;     % pulse duration (ms)
 
 % RF waveform in Gauss

@@ -23,9 +23,10 @@ CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
 % Spatial parameters (different from EPI scans)
 res_gre = [2, 2, 2]*1e-3; % resolution (m)
-N_gre = [100, 100, 100]; % acquisiton tensor size
+fov_gre = [21.6, 21.6, 21.6]*1e-2; % field of view (m)
+N_gre = round(fov_gre./res_gre); % acquisiton tensor size
 Nx_gre = N_gre(1); Ny_gre = N_gre(2); Nz_gre = N_gre(3);
-fov_gre = N_gre.*res_gre; % field of view (m)
+
 
 % Other acquisition params
 dwell = 4e-6;                   % ADC sample time (s)

@@ -7,17 +7,17 @@
 setGREparams; setEPIparams;
 
 % Total number of frames
-Nloops = 8; % Defined as toppe cv 8 at scanner
+Nloops = 14; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20241010fingertap/';
+datdir = '/mnt/storage/rexfung/20241017fingertap/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
 
 % Options
-doSENSE = false;
+doSENSE = true;
 showEPIphaseDiff = true;
 
 %% Load data
@@ -64,6 +64,7 @@ cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),ceil(Nz/Rz),Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
 [M, I] = max(cal_data,[],1);
 delay = Nfid/2 - mean(I,'all');
+delay = -delay;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -236,13 +237,14 @@ img_gre = sqrt(sum(abs(img_gre_mc).^2,4));
 %% Viz
 close all;
 
-% Final images
+% Plot a frame
+frame = 100;
 figure('WindowState','maximized');
-im('col',Nframes,'row',Nz,reshape(permute(img_final,[1 2 4 3]),Nx,Ny,Nframes*Nz),'cbar')
-title(fn_loop(1:end-3));
-ylabel('z direction'); xlabel('time')
+im(img_final(:,:,:,frame),'cbar')
+title(sprintf('|ZF SENSE combined image|, slices of frame %d',frame));
+ylabel('y'); xlabel('x')
 
-% Sensitivity maps
+%% Plot Sensitivity maps
 if doSENSE
     figure('WindowState','maximized');
     im('col',Ncoils,'row',Nz,reshape(permute(squeeze(smaps),[1 2 4 3]),Nx,Ny,Ncoils*Nz),'cbar')

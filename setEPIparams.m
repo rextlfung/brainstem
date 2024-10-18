@@ -18,16 +18,17 @@ mode = "singleshot";
 
 % Basic spatial parameters
 res = [1.8 1.8 1.8]*1e-3; % resolution (m)
-N = [100, 100, 50]; % acquisiton tensor size
+fov = [21.6, 21.6, 7.2]*1e-2; % field of view (m)
+N = round(fov./res); % acquisiton tensor size
 Nx = N(1); Ny = N(2); Nz = N(3);
-fov = N.*res; % field of view (m)
+
 
 % Random sampling parameters
 if strcmp(mode, "singleshot")
-    Ry = 3; Rz = 3;
+    Ry = 2; Rz = 3;
     R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
     acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
-    max_ky_step = round(Ny/16);   % Maximum gap in fast PE direction
+    max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
 else
     Ry = 1; Rz = 1;
 end
@@ -49,7 +50,7 @@ dwell = 4e-6;                       % ADC sample time (s). For GE, must be multi
 
 % Decay parameters
 TE = 30e-3;                         % echo time (s)
-volumeTR = 1;                     % temporal frame rate (s)
+volumeTR = 0.9;                     % temporal frame rate (s)
 TR = volumeTR/Nshots;      % time to acquire one shot (s)
 T1 = 1500e-3;                       % T1 (s)
 
