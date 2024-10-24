@@ -1,67 +1,128 @@
 % load img_final;
 % load smaps;
-% load mristack;
+load mristack;
 close all;
-
+setEPIparams;
 %% Extract one slice
-img = ones(120, 40, 4);
+% img = ones(120,40,20);
 % img = squeeze(img_final(:,:,size(img_final,3)/2,:));
-% img = repmat(double(mristack(:,:,9)).',1,1,20);
+img = repmat(double(mristack(:,:,9)).',1,1,20);
 
 N = size(img,1,2);
 Ny = N(1); Nz = N(2);
-Ry = 2; Rz = 3;
-R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
-acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
-max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
 
-%% Generate a new sampling patterns every time frame
+%% Generate sampling masks
 Nframes = size(img,3);
-omegas = false(N(1),N(2),Nframes);
+omegas = false(Ny, Nz, Nframes);
 
-for t = 1:Nframes
-    rng(t);
-    omega = randsamp2d(N,R,acs,max_ky_step);
-    omegas(:,:,t) = omega;
-    
+masktype = 'rand';
+switch masktype
+    case 'full'
+        omegas = true(Ny, Nz, Nframes);
+    case '1d'
+        omegas = false(Ny, Nz, Nframes);
+        Ry = 6;
+        for iy = 1:Ry:Ny
+            omegas(iy,:,:) = true;
+        end
+    case '2d'
+        omegas = false(Ny, Nz, Nframes);
+        Ry = 2; Rz = 3;
+        for iy = 1:Ry:Ny
+            for iz = 1:Rz:Nz
+                omegas(iy,iz,:) = true;
+            end
+        end
+    case 'caipi'
+        omegas = false(Ny, Nz, Nframes);
+        Ry = 2; Rz = 3; caipiShift = 0;
+        for iy = 1:R:Ny
+            for iz = (1 + caipiShift):Rz:Nz
+                omegas(iy,iz,:) = true;
+            end
+            caipiShift = mod(caipiShift + 1, Rz);
+        end
+    case 'rand' % Randomly generate new sampling patterns every time frame
+        Ry = 2; Rz = 3;
+        R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
+        acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
+        max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
+
+        for t = 1:Nframes
+            rng(t);
+            omega = randsamp2d(N,R,acs,max_ky_step);
+            omegas(:,:,t) = omega;
+        end
 end
 
-%% Plot sampling masks
+psfs = ifftshift(ifft2(fftshift(omegas)));
+
+% Plot sampling masks
 figure('WindowState','maximized');
-im(omegas); title('Sampling masks over time')
+t = tiledlayout(1,3,"TileSpacing","tight");
+nexttile;
+im((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1), omegas(:,:,1)); title('Sampling mask')
 xlabel('ky'); ylabel('kz');
 
-%% Plot point spread functions
-figure('WindowState','maximized');
-im(ifftshift(ifft2(fftshift(omegas)))); title('Point spread functions over time')
-xlabel('y'); ylabel('z');
+% Plot PSFs
+[Y, Z] = meshgrid((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1));
 
-return;
-%% Plot fully sampled images
-figure('WindowState','maximized');
-im('col',Nframes/2,'row',2,img,'cbar')
-title('Fully sampled images');
+nexttile;
+surf(Y',Z',abs(squeeze(psfs(:,:,1)))); title('Point spread function')
+axis tight;
+tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
+xlabel('y (px)'); ylabel('z (px)'); zlabel('PSF (au)');
 
-%% Plot retrospectively undersampled images
+% Plot fully sampled images
+% figure('WindowState','maximized');
+% im(img(:,:,1),'cbar')
+% title('Fully sampled image');
+
+% Plot retrospectively undersampled images
 ksp = ifftshift(fft2(fftshift(img)));
 ksp_us = ksp;
 ksp_us(~omegas) = 0;
 img_us = ifftshift(ifft2(fftshift(ksp_us)));
 
+nexttile;
+im(img_us(:,:,1)); title(sprintf('Aliased image'));
+
+%% Plot sampling masks over time
 figure('WindowState','maximized');
-im('col',Nframes/2,'row',2,img_us,'cbar')
-title(sprintf('Pseudo-randomly undersampled images. Rx = %d, Ry = %d',R(1),R(2)));
+im(omegas(:,:,1:6)); title('Sampling mask')
+xlabel('ky'); ylabel('kz');
+
+%% Plot PSFs over time
+
+
+%% Plot aliased images over time
+figure('WindowState','maximized');
+im(img_us(:,:,1:6)); title('Aliased image')
+xlabel('ky'); ylabel('kz');
+
+%% Make a movie of point spread functions
+[Y, Z] = meshgrid((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1));
+res_y = res(2)*1000; res_z = res(3)*1000; % resolutions in mm
+Y = Y*res_y; Z = Z*res_z;
+
+h = figure('WindowState','maximized');
+surf(Y',Z',abs(squeeze(psfs(:,:,1))));
+axis tight;
+tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
+xlabel('y (mm)'); ylabel('z (mm)'); zlabel('PSF (au)');
+ax = gca;
+ax.NextPlot = 'replaceChildren';
+
+M(Nframes) = struct('cdata',[],'colormap',[]);
+
+for t = 1:Nframes
+    surf(Y',Z',abs(squeeze(psfs(:,:,t))));
+    axis tight;
+    tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
+    xlabel('y (mm)'); ylabel('z (mm)'); zlabel('PSF (au)')
+    title(sprintf('frame %d', round(t)));
+    drawnow
+    pause;
+end
 
 return;
-%% Multicoil case (kinda irrelevant)
-Ncoils = 32;
-
-ksp_mc_us = squeeze(ksp_mc(:,:,size(ksp_mc,3)/2,:,:));
-ksp_mc_us(~repmat(omegas,1,1,1,Ncoils)) = 0;
-ksp_mc_us = permute(ksp_mc_us,[1 2 4 3]);
-img_mc_us = ifftshift(ifft2(fftshift(ksp_mc_us)));
-img_us = squeeze(sum(img_mc_us .* conj(smaps),3));
-
-figure('WindowState','maximized');
-im('col',Nframes/2,'row',2,img_us,'cbar')
-title(sprintf('Pseudo-randomly undersampled images. Rx = %d, Ry = %d',R(1),R(2)));
