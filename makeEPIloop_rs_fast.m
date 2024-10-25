@@ -24,7 +24,7 @@ gzSSR = trap4ge(gzSSR,CRT,sys);
 %% Fat-sat
 fatsat.flip    = 90;      % degrees
 fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
-fatsat.tbw     = 3;     % time-bandwidth product
+fatsat.tbw     = 3;       % time-bandwidth product
 fatsat.dur     = 6.0;     % pulse duration (ms)
 
 % RF waveform in Gauss
@@ -79,7 +79,7 @@ gyBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('y', sys, 'Area', biggest_ky_step
 gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', deltak(3)),CRT,sys); % for CAIPI, unusued rn
 
 % Area and duration of the biggest blip
-if gyBlip.area > gzBlip.area
+if biggest_ky_step*deltak(2) > gzBlip.area
     maxBlipArea = biggest_ky_step*deltak(2);
     blipDuration = mr.calcDuration(gyBlip);
 else
@@ -93,7 +93,7 @@ systmp.maxGrad = deltak(1)/dwell;  % to ensure Nyquist sampling
 gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,sys);
 
 % Circularly shift gro waveform to contain blips within each block
-[gro1, gro2] = mr.splitGradientAt(gro, blipDuration/2 - sys.adcDeadTime);
+[gro1, gro2] = mr.splitGradientAt(gro, blipDuration/2);
 gro2.delay = 0;
 gro1.delay = gro2.shape_dur;
 gro = mr.addGradients({gro2, mr.scaleGrad(gro1, -1)}, sys);
@@ -101,8 +101,8 @@ gro1.delay = 0; % This piece is necessary at the very beginning of the readout
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
-Nfid = floor(Tread/dwell/sys.adcSamplesDivisor)*sys.adcSamplesDivisor;
-adc = mr.makeAdc(Nfid, sys, 'Duration', dwell);
+Nfid = floor(Tread/dwell/4)*4;
+adc = mr.makeAdc(Nfid, 'Dwell', dwell);
 
 % Delay blips so they play after adc stops
 gyBlip.delay = Tread;
@@ -113,6 +113,9 @@ gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2)
 gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2)),CRT,sys);
 gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3)),CRT,sys);
 Tpre = max([mr.calcDuration(gxPre),mr.calcDuration(gyPre),mr.calcDuration(gzPre)]);
+gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2,'Duration',Tpre),CRT,sys);
+gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2),'Duration',Tpre),CRT,sys);
+gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3),'Duration',Tpre),CRT,sys);
 
 % Spoilers (only in x and z because ?)
 gxSpoil = trap4ge(mr.makeTrapezoid('x', sys, ...
@@ -156,14 +159,14 @@ seq = mr.Sequence(sys);
 % RF spoiling trackers
 rf_count = 1;
 
-for frame = 1:1 %NframesPerLoop
+for frame = 1:NframesPerLoop
     fprintf('Writing frame %d\n', frame)
     % Load in kz-ky sampling mask
     omega = omegas(:,:,frame);
 
     % kz encoding loop
     z_locs = find(sum(omega,1));
-    for iz = 1:1 %length(z_locs)
+    for iz = 1:length(z_locs)
         gzPreTmp = mr.scaleGrad(gzPre, (z_locs(iz) - 1 - Nz/2)/(-Nz/2));
     
         % Label the first block in each "unique" section with TRID (see Pulseq on GE manual)
@@ -251,7 +254,6 @@ axis('equal'); % enforce aspect ratio for the correct trajectory display
 hold;plot(ktraj_adc(1,:),ktraj_adc(2,:),'r.'); % plot the sampling points
 title('full k-space trajectory (k_x x k_y)');
 
-return;
 %% Optional slow step, but useful for testing during development,
 % e.g., for the real TE, TR or for staying within slewrate limits
 rep = seq.testReport;
