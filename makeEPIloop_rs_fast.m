@@ -76,7 +76,7 @@ end
 
 % Start with the blips. Ensure long enough to support the largest blips
 gyBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('y', sys, 'Area', biggest_ky_step*deltak(2)), 1/biggest_ky_step),CRT,sys);
-gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', 0*deltak(3)),CRT,sys); % for CAIPI, unusued rn
+gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', deltak(3)),CRT,sys); % for CAIPI, unusued rn
 
 % Area and duration of the biggest blip
 if gyBlip.area > gzBlip.area
@@ -101,18 +101,18 @@ gro1.delay = 0; % This piece is necessary at the very beginning of the readout
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
-Nfid = round(Tread/dwell/sys.adcSamplesDivisor)*sys.adcSamplesDivisor;
-adc = mr.makeAdc(Nfid, sys, 'Dwell', dwell);
+Nfid = floor(Tread/dwell/sys.adcSamplesDivisor)*sys.adcSamplesDivisor;
+adc = mr.makeAdc(Nfid, sys, 'Duration', dwell);
 
 % Delay blips so they play after adc stops
 gyBlip.delay = Tread;
 gzBlip.delay = Tread;
 
-% Prephasers
-gxPre = trap4ge(mr.makeTrapezoid('x', sys, 'Area', -(Nx*deltak(1) + maxBlipArea)/2),CRT,sys);
-gyPre = trap4ge(mr.makeTrapezoid('y', sys, 'Area', -Ny/2*deltak(2)),CRT,sys);
-gzPre = trap4ge(mr.makeTrapezoid('z', sys, 'Area', -Nz/2*deltak(3)),CRT,sys);
-Tpre = max([mr.calcDuration(gxPre), mr.calcDuration(gyPre), mr.calcDuration(gzPre)]);
+% Prephasers (Make duration long enough to support all 3 directions)
+gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2),CRT,sys);
+gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2)),CRT,sys);
+gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3)),CRT,sys);
+Tpre = max([mr.calcDuration(gxPre),mr.calcDuration(gyPre),mr.calcDuration(gzPre)]);
 
 % Spoilers (only in x and z because ?)
 gxSpoil = trap4ge(mr.makeTrapezoid('x', sys, ...
@@ -156,15 +156,15 @@ seq = mr.Sequence(sys);
 % RF spoiling trackers
 rf_count = 1;
 
-for frame = 1:NframesPerLoop
+for frame = 1:1 %NframesPerLoop
     fprintf('Writing frame %d\n', frame)
     % Load in kz-ky sampling mask
     omega = omegas(:,:,frame);
 
     % kz encoding loop
     z_locs = find(sum(omega,1));
-    for iz = 1:length(z_locs)
-        gzPreTmp = mr.scaleGrad(gzPre,-(z_locs(iz) - floor(Nz/2))/(Nz/2));
+    for iz = 1:1 %length(z_locs)
+        gzPreTmp = mr.scaleGrad(gzPre, (z_locs(iz) - 1 - Nz/2)/(-Nz/2));
     
         % Label the first block in each "unique" section with TRID (see Pulseq on GE manual)
         TRID = 1;
@@ -192,7 +192,7 @@ for frame = 1:NframesPerLoop
         y_locs = find(omega(:,z_locs(iz)));
 
             % Move to corner of k-space
-            gyPreTmp = mr.scaleGrad(gyPre, (gyBlip.area*(y_locs(1) - 1) + gyPre.area)/gyPre.area);
+            gyPreTmp = mr.scaleGrad(gyPre, (y_locs(1) - 1 - Ny/2)/(-Ny/2));
             seq.addBlock(gxPre, gyPreTmp, gzPreTmp);
     
             % Zip through k-space with EPI trajectory

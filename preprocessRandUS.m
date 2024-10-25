@@ -11,7 +11,7 @@ Nloops = 14; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20241017fingertap/';
+datdir = '/mnt/storage/rexfung/20241023ball/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
@@ -238,7 +238,7 @@ img_gre = sqrt(sum(abs(img_gre_mc).^2,4));
 close all;
 
 % Plot a frame
-frame = 100;
+frame = 1;
 figure('WindowState','maximized');
 im(img_final(:,:,:,frame),'cbar')
 title(sprintf('|ZF SENSE combined image|, slices of frame %d',frame));
