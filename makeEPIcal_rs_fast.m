@@ -17,12 +17,12 @@
 %
 % Last modified August 26th, 2024
 
-%% Define experimental parameters
+%% Definte experiment parameters
 setEPIparams;
 
 %% Path and options
-seqname = '3DEPI_cal';
-addpath('excitation/');
+seqname = '3DEPI_loop_rs';
+addpath('excitation');
 
 %% Excitation pulse
 % Target a slightly thinner slice to alleviate aliasing
@@ -36,7 +36,7 @@ gzSSR = trap4ge(gzSSR,CRT,sys);
 %% Fat-sat
 fatsat.flip    = 90;      % degrees
 fatsat.slThick = 1e5;     % dummy value (determines slice-select gradient, but we won't use it; just needs to be large to reduce dead time before+after rf pulse)
-fatsat.tbw     = 3;     % time-bandwidth product
+fatsat.tbw     = 3;       % time-bandwidth product
 fatsat.dur     = 6.0;     % pulse duration (ms)
 
 % RF waveform in Gauss
@@ -80,7 +80,7 @@ for frame = 1:NframesPerLoop
     for z = 1:Nz
         biggest_ky_step = max([biggest_ky_step, max(diff(find(omegas(:,z,frame))))]);
         if biggest_ky_step > max_ky_step
-            warning('Biggest ky step exceeds prescribed constraint');
+            warning('Biggest ky step exceeds prescribed limit');
             pause();
         end
     end
@@ -88,10 +88,10 @@ end
 
 % Start with the blips. Ensure long enough to support the largest blips
 gyBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('y', sys, 'Area', biggest_ky_step*deltak(2)), 1/biggest_ky_step),CRT,sys);
-gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', 0*deltak(3)),CRT,sys); % for CAIPI, unusued rn
+gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', deltak(3)),CRT,sys); % for CAIPI, unusued rn
 
 % Area and duration of the biggest blip
-if gyBlip.area > gzBlip.area
+if biggest_ky_step*deltak(2) > gzBlip.area
     maxBlipArea = biggest_ky_step*deltak(2);
     blipDuration = mr.calcDuration(gyBlip);
 else
@@ -105,7 +105,7 @@ systmp.maxGrad = deltak(1)/dwell;  % to ensure Nyquist sampling
 gro = trap4ge(mr.makeTrapezoid('x', systmp, 'Area', Nx*deltak(1) + maxBlipArea),CRT,sys);
 
 % Circularly shift gro waveform to contain blips within each block
-[gro1, gro2] = mr.splitGradientAt(gro, blipDuration/2 - sys.adcDeadTime);
+[gro1, gro2] = mr.splitGradientAt(gro, blipDuration/2);
 gro2.delay = 0;
 gro1.delay = gro2.shape_dur;
 gro = mr.addGradients({gro2, mr.scaleGrad(gro1, -1)}, sys);
@@ -113,19 +113,21 @@ gro1.delay = 0; % This piece is necessary at the very beginning of the readout
 
 % ADC event
 Tread = mr.calcDuration(gro) - blipDuration;
-Nfid = round(Tread/dwell/sys.adcSamplesDivisor)*sys.adcSamplesDivisor;
-adc = mr.makeAdc(Nfid, sys, 'Dwell', dwell, 'Delay', 0);
-adc.delay = 0;
+Nfid = floor(Tread/dwell/4)*4;
+adc = mr.makeAdc(Nfid, 'Dwell', dwell);
 
 % Delay blips so they play after adc stops
 gyBlip.delay = Tread;
 gzBlip.delay = Tread;
 
-% Prephasers
-gxPre = trap4ge(mr.makeTrapezoid('x', sys, 'Area', -(Nx*deltak(1) + maxBlipArea)/2),CRT,sys);
-gyPre = trap4ge(mr.makeTrapezoid('y', sys, 'Area', -Ny/2*deltak(2)),CRT,sys);
-gzPre = trap4ge(mr.makeTrapezoid('z', sys, 'Area', -Nz/2*deltak(3)),CRT,sys);
-Tpre = max([mr.calcDuration(gxPre), mr.calcDuration(gyPre), mr.calcDuration(gzPre)]);
+% Prephasers (Make duration long enough to support all 3 directions)
+gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2),CRT,sys);
+gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2)),CRT,sys);
+gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3)),CRT,sys);
+Tpre = max([mr.calcDuration(gxPre),mr.calcDuration(gyPre),mr.calcDuration(gzPre)]);
+gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2,'Duration',Tpre),CRT,sys);
+gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2),'Duration',Tpre),CRT,sys);
+gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3),'Duration',Tpre),CRT,sys);
 
 % Spoilers (only in x and z because ?)
 gxSpoil = trap4ge(mr.makeTrapezoid('x', sys, ...
@@ -168,6 +170,7 @@ seq = mr.Sequence(sys);
 
 % RF spoiling trackers
 rf_count = 1;
+rf_phase = rf_phase_0;
 
 for frame = -Ndummyframes:0
     % Convenience booleans for turning off adc
@@ -184,7 +187,7 @@ for frame = -Ndummyframes:0
     % kz encoding loop (fake)
     z_locs = find(sum(omega,1));
     for iz = 1:length(z_locs)
-        gzPreTmp = mr.scaleGrad(gzPre, 0);
+        gzPreTmp = mr.scaleGrad(gzPre, 0); % turn off kz encoding
 
         % Fat-sat
         seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
@@ -210,7 +213,7 @@ for frame = -Ndummyframes:0
         y_locs = find(omega(:,z_locs(iz)));
 
             % Move to corner of k-space
-            gyPreTmp = mr.scaleGrad(gyPre, 0);
+            gyPreTmp = mr.scaleGrad(gyPre, 0); % turn off ky encoding
             seq.addBlock(gxPre, gyPreTmp, gzPreTmp);
     
             % Zip through k-space with EPI trajectory

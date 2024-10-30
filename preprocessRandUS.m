@@ -7,11 +7,11 @@
 setGREparams; setEPIparams;
 
 % Total number of frames
-Nloops = 14; % Defined as toppe cv 8 at scanner
+Nloops = 1; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20241023ball/';
+datdir = '/mnt/storage/rexfung/20241025ball/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
@@ -221,7 +221,7 @@ if doSENSE
 end
 
 %% Coil combination
-if doSENSE
+if false
     img_final = squeeze(sum(imgs_mc .* conj(smaps), 4));
 else % root sum of squares combination
     img_final = squeeze(sqrt(sum(abs(imgs_mc).^2, 4)));

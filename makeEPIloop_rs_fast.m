@@ -68,7 +68,7 @@ for frame = 1:NframesPerLoop
     for z = 1:Nz
         biggest_ky_step = max([biggest_ky_step, max(diff(find(omegas(:,z,frame))))]);
         if biggest_ky_step > max_ky_step
-            warning('Biggest ky step exceeds prescribed constraint');
+            warning('Biggest ky step exceeds prescribed limit');
             pause();
         end
     end
@@ -158,6 +158,7 @@ seq = mr.Sequence(sys);
 
 % RF spoiling trackers
 rf_count = 1;
+rf_phase = rf_phase_0;
 
 for frame = 1:NframesPerLoop
     fprintf('Writing frame %d\n', frame)
@@ -257,4 +258,4 @@ title('full k-space trajectory (k_x x k_y)');
 %% Optional slow step, but useful for testing during development,
 % e.g., for the real TE, TR or for staying within slewrate limits
 rep = seq.testReport;
-fprintf([rep{:}]);
+fprintf([rep{[1:9, 11:end]}]); % print report except warnings
