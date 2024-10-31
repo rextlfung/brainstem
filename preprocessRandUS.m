@@ -7,18 +7,21 @@
 setGREparams; setEPIparams;
 
 % Total number of frames
-Nloops = 1; % Defined as toppe cv 8 at scanner
+Nloops = 14; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20241025ball/';
+datdir = '/mnt/storage/rexfung/20241017fingertap/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
 
 % Options
-doSENSE = true;
+doSENSE = false;
 showEPIphaseDiff = true;
+
+%% Parallel computing with 16 workers
+parpool(16);
 
 %% Load data
 % Load raw data from scan archives (takes some time)
@@ -93,6 +96,7 @@ ksp_loop = permute(ksp_loop,[1 3 4 2 5]); % [Nfid Ny/Ry Nz/Rz Ncoils Nframes]
 ksp_loop_cart = zeros([Nx,size(ksp_loop,2:ndims(ksp_loop))]);
 tic
     parfor frame = 1:Nframes
+        fprintf('Gridding frame %d\n', round(frame));
         tmp = squeeze(ksp_loop(:,:,:,:,frame));
         tmp1 = hmriutils.epi.rampsampepi2cart(tmp, kxo, kxe, Nx, fov(1)*100, 'nufft');
         ksp_loop_cart(:,:,:,:,frame) = tmp1;
@@ -129,13 +133,13 @@ imgs_mc = ifftshift(ifft(...
 
 clear ksp_loop_cart ksp_loop ksp_loop_raw; 
 %% Get sensitivity maps with either BART or PISCO
+% Reshape and permute gre data
+ksp_gre = ksp_gre_raw(:,:,1:Ny_gre*Nz_gre); % discard trailing data
+ksp_gre = reshape(ksp_gre,Nx_gre,Ncoils,Ny_gre,Nz_gre);
+ksp_gre = permute(ksp_gre,[1 3 4 2]); % [Nx Ny Nz Ncoils]
+
 smaps_technique = 'pisco';
 if doSENSE
-    % Reshape and permute gre data
-    ksp_gre = ksp_gre_raw(:,:,1:Ny_gre*Nz_gre); % discard trailing data
-    ksp_gre = reshape(ksp_gre,Nx_gre,Ncoils,Ny_gre,Nz_gre);
-    ksp_gre = permute(ksp_gre,[1 3 4 2]); % [Nx Ny Nz Ncoils]
-
     if strcmp(smaps_technique, 'pisco')
         fprintf('Estimating sensitivity maps from GRE data via PISCO...\n')
         % PISCO options
@@ -166,6 +170,7 @@ if doSENSE
             eigmaps = zeros(Nx_gre, Ny_gre, Nz_gre);
             
             parfor z = 1:Nz_gre
+                fprintf('estimate z = %d\n', round(z));
                 [smaps_tmp, eigvals] = PISCO_senseMaps_estimation(...
                     squeeze(tmp(cal_index_x,cal_index_y,z,:)),...
                     [Nx_gre, Ny_gre],...
@@ -221,7 +226,7 @@ if doSENSE
 end
 
 %% Coil combination
-if false
+if doSENSE
     img_final = squeeze(sum(imgs_mc .* conj(smaps), 4));
 else % root sum of squares combination
     img_final = squeeze(sqrt(sum(abs(imgs_mc).^2, 4)));

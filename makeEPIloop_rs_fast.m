@@ -211,7 +211,7 @@ for frame = 1:NframesPerLoop
         % end ky encoding
 
         % spoil
-        seq.addBlock(gxSpoil, gzSpoil);
+        seq.addBlock(gxSpoil, mr.scaleGrad(gzSpoil, (gzSpoil.area - gzPreTmp.area)/gzSpoil.area));
 
         % Achieve desired TR
         if TR > minTR
