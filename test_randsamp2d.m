@@ -4,9 +4,9 @@ load mristack;
 close all;
 setEPIparams;
 %% Extract one slice
-% img = ones(120,40,20);
+img = ones(120,40,20);
 % img = squeeze(img_final(:,:,size(img_final,3)/2,:));
-img = repmat(double(mristack(:,:,9)).',1,1,20);
+% img = repmat(double(mristack(:,:,9)).',1,1,20);
 
 N = size(img,1,2);
 Ny = N(1); Nz = N(2);
@@ -87,12 +87,12 @@ img_us = ifftshift(ifft2(fftshift(ksp_us)));
 nexttile;
 im(img_us(:,:,1)); title(sprintf('Aliased image'));
 
+return;
+
 %% Plot sampling masks over time
 figure('WindowState','maximized');
 im(omegas(:,:,1:6)); title('Sampling mask')
 xlabel('ky'); ylabel('kz');
-
-%% Plot PSFs over time
 
 
 %% Plot aliased images over time
@@ -125,4 +125,23 @@ for t = 1:Nframes
     pause;
 end
 
-return;
+%% Plot 3 sampling masks and PSFs side by side
+figure('WindowState','maximized');
+Nframes = 3;
+tiledlayout(2,Nframes,"TileSpacing","none");
+
+for frame = 1:Nframes
+    nexttile(frame);
+    im((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1), omegas(:,:,frame)); title(sprintf('frame %d',round(frame)));
+    if frame == 1
+        xlabel('ky (px^{-1})'); ylabel('kz (px^{-1})');
+    end
+
+    nexttile(Nframes + frame);
+    surf(Y',Z',abs(squeeze(psfs(:,:,frame))),'FaceColor','interp');
+    axis tight;
+    tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
+    if frame == 1
+        xlabel('y (px)'); ylabel('z (px)'); zlabel('PSF (au)');
+    end
+end

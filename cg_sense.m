@@ -2,23 +2,28 @@
 % Load data
 setGREparams; setEPIparams;
 
-kdata_path = "/home/rexfung/github/JuliaImageRecon/data/20241017fingertap/kdata2x3.mat";
-smaps_path = "/home/rexfung/github/JuliaImageRecon/data/20241017fingertap/smaps.mat";
+kdata_path = "/home/rexfung/github/data/20241017fingertap/kdata2x3.mat";
+smaps_path = "/home/rexfung/github/data/20241017fingertap/smaps.mat";
 
-load(kdata_path); % ksp_zf
+kdata = matfile(kdata_path); % ksp_zf
 load(smaps_path); % smaps
 
-[Nx, Ny, Nz, Ncoils, Nframes] = size(ksp_zf);
+Nx = 120; Ny = 120; Nz = 40; Ncoils = 32; Nframes = 280;
+
+lam = 1e-2;
 
 %% Recon with CG-SENSE
 tic;
+delete(gcp('nocreate'));
+parpool(8);
 img = zeros(Nx,Ny,Nz,Nframes);
-for frame = 1:Nframes
-    disp(frame);
-    data = squeeze(ksp_zf(:,:,:,:,frame));
-    img(:,:,:,frame) = bart('pics -l1 -r 0.001', data, smaps);
+parfor frame = 1:Nframes
+    fprintf('Reconstructing frame %d\n', round(frame));
+    data = squeeze(kdata.ksp_zf(:,:,:,:,frame));
+    img(:,:,:,frame) = bart('pics -l1 -r0.01', data, smaps);
 end
+delete(gcp('nocreate'));
 toc;
 
-%% Save file
-save("output_cg.mat","img","-v7.3");
+%% Save
+save('img_cg_1e-2.mat','img','-v7.3');
