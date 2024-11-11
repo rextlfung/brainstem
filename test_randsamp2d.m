@@ -68,7 +68,7 @@ xlabel('ky'); ylabel('kz');
 [Y, Z] = meshgrid((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1));
 
 nexttile;
-surf(Y',Z',abs(squeeze(psfs(:,:,1)))); title('Point spread function')
+surf(Y',Z',abs(squeeze(psfs(:,:,1))),'FaceColor','interp'); title('Point spread function')
 axis tight;
 tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
 xlabel('y (px)'); ylabel('z (px)'); zlabel('PSF (au)');
@@ -106,7 +106,7 @@ res_y = res(2)*1000; res_z = res(3)*1000; % resolutions in mm
 Y = Y*res_y; Z = Z*res_z;
 
 h = figure('WindowState','maximized');
-surf(Y',Z',abs(squeeze(psfs(:,:,1))));
+surf(Y',Z',abs(squeeze(psfs(:,:,1))),'FaceColor','interp');
 axis tight;
 tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
 xlabel('y (mm)'); ylabel('z (mm)'); zlabel('PSF (au)');
@@ -132,16 +132,23 @@ tiledlayout(2,Nframes,"TileSpacing","none");
 
 for frame = 1:Nframes
     nexttile(frame);
-    im((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1), omegas(:,:,frame)); title(sprintf('frame %d',round(frame)));
+    im((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1), omegas(:,:,frame));
+    title(sprintf('frame %d',round(frame)),'FontSize',20);
     if frame == 1
-        xlabel('ky (px^{-1})'); ylabel('kz (px^{-1})');
+        xlabel('ky (px^{-1})','FontSize',20);
+        ylabel('kz (px^{-1})','FontSize',20);
     end
 
     nexttile(Nframes + frame);
     surf(Y',Z',abs(squeeze(psfs(:,:,frame))),'FaceColor','interp');
     axis tight;
-    tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
+    tmp = daspect;
+    daspect([tmp(2), tmp(2), tmp(3)]);
     if frame == 1
-        xlabel('y (px)'); ylabel('z (px)'); zlabel('PSF (au)');
+        xlabel('y (px)','FontSize',20);
+        ylabel('z (px)','FontSize',20);
+        zlabel('PSF (au)','FontSize',20);
     end
 end
+
+sgtitle()

@@ -144,6 +144,7 @@ minTR = mr.calcDuration(rfsat)...
       + TEdelay...
       + max([mr.calcDuration(gxPre), mr.calcDuration(gyPre), mr.calcDuration(gzPre)])...
       + 2*ceil(Ny/Ry/2) * mr.calcDuration(gro)...
+      + mr.calcDuration(gzPre)...
       + max([mr.calcDuration(gxSpoil), mr.calcDuration(gzSpoil)]);
 if TR >= minTR
     TRdelay = floor((TR - minTR)/sys.blockDurationRaster)*sys.blockDurationRaster;
@@ -210,8 +211,11 @@ for frame = 1:NframesPerLoop
             seq.addBlock(adc, mr.scaleGrad(gro2, (-1)^iy));
         % end ky encoding
 
+        % rephase kz encoding before spoiling
+        seq.addBlock(mr.scaleGrad(gzPreTmp, -1));
+
         % spoil
-        seq.addBlock(gxSpoil, mr.scaleGrad(gzSpoil, (gzSpoil.area - gzPreTmp.area)/gzSpoil.area));
+        seq.addBlock(gxSpoil, gzSpoil);
 
         % Achieve desired TR
         if TR > minTR
@@ -240,9 +244,10 @@ seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
 %% Plot
-figure('WindowState','maximized');
+figure();
 % plot(seq, 'timeRange', [0 TR]);
 toppe.plotseq(sysGE, 'timeRange',[0, 2*TR]);
+fontsize(16,'points');
 
 return;
 %% Detailed checks that takes some time to run

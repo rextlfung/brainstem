@@ -1,6 +1,6 @@
-%% CG-SENSE recon with BART
+%% Zero filled, sensitivty maps weighted recon
 % Load data
-setGREparams; setEPIparams;
+% setGREparams; setEPIparams;
 
 kdata_path = "/home/rexfung/github/data/20241017fingertap/kdata2x3.mat";
 smaps_path = "/home/rexfung/github/data/20241017fingertap/smaps.mat";
@@ -11,18 +11,18 @@ smaps = flip(smaps,1);
 
 Nx = 120; Ny = 120; Nz = 40; Ncoils = 32; Nframes = 280;
 
-%% Recon with CG-SENSE
+%% Recon
 tic;
 delete(gcp('nocreate'));
-parpool(8);
+parpool(4);
 img = zeros(Nx,Ny,Nz,Nframes);
 parfor frame = 1:Nframes
     fprintf('Reconstructing frame %d\n', round(frame));
     data = squeeze(kdata.ksp_zf(:,:,:,:,frame));
-    img(:,:,:,frame) = bart('pics -l1 -r0.001', data, smaps);
+    img(:,:,:,frame) = squeeze(sum(toppe.utils.ift3(data).*conj(smaps), 4));
 end
 delete(gcp('nocreate'));
 toc;
 
 %% Save
-save('icg_1e-3.mat','img','-v7.3');
+save('zf_sense.mat','img','-v7.3');
