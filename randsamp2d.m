@@ -51,8 +51,8 @@ function omega = randsamp2d(N, R, acs, max_ky_step)
     Nz_nacs = ceil(Nz/Rz - Nz_acs);
 
     % Genearte Gaussian pdf of sampling non-ACS locations
-    w_y = normpdf(nacs_indices_y,mean(1:Ny),std(1:Ny));
-    w_z = normpdf(nacs_indices_z,mean(1:Nz),std(1:Nz));
+    w_y = normpdf(nacs_indices_y,mean(1:Ny),Ny/6);
+    w_z = normpdf(nacs_indices_z,mean(1:Nz),Nz/6);
 
     % Generate sampling locations along kz
     nacs_indices_samp_z = datasample(nacs_indices_z, Nz_nacs, 'Replace', false, 'Weights',w_z);
@@ -71,10 +71,12 @@ function omega = randsamp2d(N, R, acs, max_ky_step)
 
             % Limit spacing between consecutive ky lines
             % Add in edge of ACS region to prevent large gap
-            if side == 1
-                half_line = [half_line, acs_indices_y(1)];
-            else
-                half_line = [acs_indices_y(end), half_line];
+            if Ny_acs > 0
+                if side == 1
+                    half_line = [half_line, acs_indices_y(1)];
+                else
+                    half_line = [acs_indices_y(end), half_line];
+                end
             end
 
             [gap,maxdex] = max(diff(half_line)); % find biggest gap
@@ -92,10 +94,12 @@ function omega = randsamp2d(N, R, acs, max_ky_step)
             end
 
             % remove edge of ACS index from NACS indices
-            if side == 1
-                half_line = half_line(1:end-1);
-            else
-                half_line = half_line(2:end);
+            if Ny_acs > 0
+                if side == 1
+                    half_line = half_line(1:end-1);
+                else
+                    half_line = half_line(2:end);
+                end
             end
 
             nacs_indices_samp_y(side,:) = half_line;

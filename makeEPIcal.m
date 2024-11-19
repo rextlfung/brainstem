@@ -31,6 +31,7 @@ addpath('excitation');
                                      'sliceThickness',0.9*fov(3),...
                                      'system',sys);
 gzSS = trap4ge(gzSS,CRT,sys);
+gzSS.delay = rf.delay - gzSS.riseTime; % Sync up rf pulse and slice select gradient
 gzSSR = trap4ge(gzSSR,CRT,sys);
 
 %% Fat-sat

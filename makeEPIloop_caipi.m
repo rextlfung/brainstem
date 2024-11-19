@@ -1,12 +1,12 @@
-% Pseudo-random 3D EPI sequence
+% Pseudo-random 3D EPI sequence w/ z blips for CAIPI-like shifting
 % Continuous readout gradient for speed.
 % Create blocks without splitting blips.
 % Represent readout gradients as arbitrary instead of trapezoids.
+% CAIPI added to sample multiple kz locations per RF excitation
 % Rex Fung
-% Last modified August 30th, 2024
 
 %% Definte experiment parameters
-setEPIparams;
+setEPIparams; NframesPerLoop = 1;
 
 %% Path and options
 seqname = '3DEPI_loop_rs';
@@ -53,7 +53,7 @@ omegas = zeros(Ny,Nz,NframesPerLoop);
 for frame = 1:NframesPerLoop
     % Create pseudo-random 2D sampling mask. Save for recon
     rng(frame); % A different mask per frame
-    omega = randsamp2d(N(2:end), R, acs, max_ky_step);
+    omega = randsamp2d_caipi(N(2:end), R, max_ky_step, caipi_z);
     omegas(:,:,frame) = omega;
 end
 
@@ -63,28 +63,16 @@ end
 % Define k-space spacing for fully-sampled data
 deltak = 1./fov;
 
-% Find the biggest step in ky for setting blip duration
-biggest_ky_step = 0;
-for frame = 1:NframesPerLoop
-    for z = 1:Nz
-        biggest_ky_step = max([biggest_ky_step, max(diff(find(omegas(:,z,frame))))]);
-        if biggest_ky_step > max_ky_step
-            warning('Biggest ky step exceeds prescribed limit');
-            pause();
-        end
-    end
-end
-
 % Start with the blips. Ensure long enough to support the largest blips
-gyBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('y', sys, 'Area', biggest_ky_step*deltak(2)), 1/biggest_ky_step),CRT,sys);
-gzBlip = trap4ge(mr.makeTrapezoid('z', sys, 'Area', deltak(3)),CRT,sys); % for CAIPI, unusued rn
+gyBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('y', sys, 'Area', max_ky_step*deltak(2)), 1/max_ky_step),CRT,sys);
+gzBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('z', sys, 'Area', caipi_z*deltak(3)), 1/caipi_z),CRT,sys); % for CAIPI
 
 % Area and duration of the biggest blip
-if biggest_ky_step*deltak(2) > gzBlip.area
+if max_ky_step*deltak(2) > caipi_z*deltak(3)
     maxBlipArea = biggest_ky_step*deltak(2);
     blipDuration = mr.calcDuration(gyBlip);
 else
-    maxBlipArea = gzBlip.area;
+    maxBlipArea = caipi_z*deltak(3);
     blipDuration = mr.calcDuration(gzBlip);
 end
 
@@ -168,9 +156,20 @@ for frame = 1:NframesPerLoop
     omega = omegas(:,:,frame);
 
     % kz encoding loop
-    z_locs = find(sum(omega,1));
+    % Each "z_loc" is the starting point of a partition of kz locations
+    z_locs = 1:caipi_z:(Nz - caipi_z + 1);
     for iz = 1:length(z_locs)
-        gzPreTmp = mr.scaleGrad(gzPre, (z_locs(iz) - 1 - Nz/2)/(-Nz/2));
+        % Load in sampling mask of current partition
+        omega_curr = omega(:,z_locs(iz):(z_locs(iz) + caipi_z - 1));
+
+        % Infer randomly generated CAIPI shifting order
+        first_ky = zeros(3,1);
+        for shift = 1:caipi_z
+            first_ky(shift) = find(omega_curr(:,shift),1);
+        end
+        [~,z_shift] = sort(first_ky);
+
+        gzPreTmp = mr.scaleGrad(gzPre, (z_locs(iz) + (z_shift(1) - 1) - 1 - Nz/2)/(-Nz/2));
     
         % Label the first block in each "unique" section with TRID (see Pulseq on GE manual)
         TRID = 1;
@@ -195,7 +194,8 @@ for frame = 1:NframesPerLoop
         end
 
         % ky encoding
-        y_locs = find(omega(:,z_locs(iz)));
+        % Consider all sampled ky locations within the current kz partition
+        y_locs = find(sum(omega_curr, 2));
 
             % Move to corner of k-space
             gyPreTmp = mr.scaleGrad(gyPre, (y_locs(1) - 1 - Ny/2)/(-Ny/2));
@@ -205,7 +205,9 @@ for frame = 1:NframesPerLoop
             seq.addBlock(gro1);
             for iy = 1:(length(y_locs) - 1)
                 seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)),...
-                    mr.scaleGrad(gyBlip, y_locs(iy + 1) - y_locs(iy)));
+                    mr.scaleGrad(gyBlip, y_locs(iy + 1) - y_locs(iy)),...
+                    mr.scaleGrad(gzBlip, z_shift(mod(iy + 1,caipi_z) + 1) - z_shift(mod(iy,caipi_z) + 1))...
+                    );
             end
 
             % Last line
@@ -250,17 +252,18 @@ figure();
 toppe.plotseq(sysGE, 'timeRange',[0, 2*TR]);
 fontsize(16,'points');
 
-return;
 %% Detailed checks that takes some time to run
 
 % k-space trajectory calculation and plot
 [ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing] = seq.calculateKspacePP();
 figure('WindowState','maximized');
-plot(ktraj(1,:),ktraj(2,:),'b'); % a 2D k-space plot
+plot(ktraj(2,:),ktraj(3,:),'b'); % a 2D k-space plot
 axis('equal'); % enforce aspect ratio for the correct trajectory display
-hold;plot(ktraj_adc(1,:),ktraj_adc(2,:),'r.'); % plot the sampling points
-title('full k-space trajectory (k_x x k_y)');
+hold;plot(ktraj_adc(2,:),ktraj_adc(3,:),'r.'); % plot the sampling points
+title('full k-space trajectory (k_y x k_z)');
+xlabel('ky'); ylabel('kz');
 
+return;
 %% Optional slow step, but useful for testing during development,
 % e.g., for the real TE, TR or for staying within slewrate limits
 rep = seq.testReport;

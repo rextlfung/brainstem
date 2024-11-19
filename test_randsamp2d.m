@@ -1,12 +1,14 @@
-% load img_final;
-% load smaps;
-load mristack;
+%% Set up
+% load mristack;
+load('/home/rexfung/github/data/myBrain/myBrain.mat')
 close all;
 setEPIparams;
+
 %% Extract one slice
-img = ones(120,40,20);
-% img = squeeze(img_final(:,:,size(img_final,3)/2,:));
-% img = repmat(double(mristack(:,:,9)).',1,1,20);
+Nframes = 100;
+% img = ones(100,100,Nframes);
+% img = repmat(double(mristack(:,:,9)).',1,1,Nframes);
+img = repmat(double(V(:,:,size(V,3)/2)).',1,1,Nframes);
 
 N = size(img,1,2);
 Ny = N(1); Nz = N(2);
@@ -15,10 +17,16 @@ Ny = N(1); Nz = N(2);
 Nframes = size(img,3);
 omegas = false(Ny, Nz, Nframes);
 
-masktype = 'rand';
+masktype = 'rand_caipi';
 switch masktype
     case 'full'
         omegas = true(Ny, Nz, Nframes);
+    case 'lowpass'
+        Ry = sqrt(6); Rz = Ry;
+        oemgas = false(Ny, Nz, Nframes);
+        omegas((1:ceil(Ny/Ry)) + ceil(Ny/2) - ceil(Ny/Ry/2),...
+               (1:ceil(Nz/Rz)) + ceil(Nz/2) - ceil(Nz/Rz/2),...
+               :) = true;
     case '1d'
         omegas = false(Ny, Nz, Nframes);
         Ry = 6;
@@ -36,7 +44,7 @@ switch masktype
     case 'caipi'
         omegas = false(Ny, Nz, Nframes);
         Ry = 2; Rz = 3; caipiShift = 0;
-        for iy = 1:R:Ny
+        for iy = 1:Ry:Ny
             for iz = (1 + caipiShift):Rz:Nz
                 omegas(iy,iz,:) = true;
             end
@@ -49,34 +57,46 @@ switch masktype
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
 
         for t = 1:Nframes
-            rng(t);
             omega = randsamp2d(N,R,acs,max_ky_step);
+            omegas(:,:,t) = omega;
+        end
+    case 'rand_caipi'
+        Ry = 2; Rz = 1;
+        R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
+        max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
+        caipi_z = 3;                    % Minimum gap in slow PE direction to prevent duplicate sampling with CAIPI shift
+
+        for t = 1:Nframes
+            omega = randsamp2d_caipi(N,R,max_ky_step,caipi_z);
             omegas(:,:,t) = omega;
         end
 end
 
-psfs = ifftshift(ifft2(fftshift(omegas)));
+% Compute acceleration
+R = numel(omegas)/sum(omegas,'all');
+
+% Select frame for plotting
+frame = 4;
 
 % Plot sampling masks
 figure('WindowState','maximized');
-t = tiledlayout(1,3,"TileSpacing","tight");
-nexttile;
-im((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1), omegas(:,:,1)); title('Sampling mask')
+t = tiledlayout(2,4,"TileSpacing","tight");
+
+nexttile(1);
+im((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1), omegas(:,:,frame));
+title(sprintf('Sampling mask, R = %f', R));
 xlabel('ky'); ylabel('kz');
 
 % Plot PSFs
+psfs = ifftshift(ifft2(fftshift(omegas)));
 [Y, Z] = meshgrid((-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1));
 
-nexttile;
-surf(Y',Z',abs(squeeze(psfs(:,:,1))),'FaceColor','interp'); title('Point spread function')
+nexttile(2);
+surf(Y',Z',abs(squeeze(psfs(:,:,frame))),'FaceColor','interp','EdgeColor','interp');
+title('| Point spread function |');
 axis tight;
 tmp = daspect; daspect([tmp(2), tmp(2), tmp(3)]);
 xlabel('y (px)'); ylabel('z (px)'); zlabel('PSF (au)');
-
-% Plot fully sampled images
-% figure('WindowState','maximized');
-% im(img(:,:,1),'cbar')
-% title('Fully sampled image');
 
 % Plot retrospectively undersampled images
 ksp = ifftshift(fft2(fftshift(img)));
@@ -84,20 +104,54 @@ ksp_us = ksp;
 ksp_us(~omegas) = 0;
 img_us = ifftshift(ifft2(fftshift(ksp_us)));
 
-nexttile;
-im(img_us(:,:,1)); title(sprintf('Aliased image'));
+nexttile(3);
+im(img_us(:,:,frame));
+title('Aliased image');
+
+% Plot fully sampled image for comparison
+nexttile(4);
+im(img(:,:,frame));
+title('Fully sampled image')
+
+% Plot normalized SVs compared to fully sampled
+s_fs = svd(img(:,:,frame));
+s_us = svd(img_us(:,:,frame));
+s_fs = s_fs ./ s_fs(1);
+s_us = s_us ./ s_us(1);
+
+nexttile(5,[1 2]);
+plot(1:min(Ny,Nz), s_fs, '-o');
+hold on;
+plot(1:min(Ny,Nz), s_us, '--o');
+legend('Fully sampled','Under sampled');
+title('Normalized singular values of displayed 2D image');
+
+% Same thing for the entire space-time matrix
+s_fs = svd(reshape(img,[Ny*Nz, Nframes]));
+s_us = svd(reshape(img_us,[Ny*Nz, Nframes]));
+s_fs = s_fs ./ s_fs(1);
+s_us = s_us ./ s_us(1);
+
+nexttile(7,[1 2]);
+plot(s_fs, '-o');
+hold on;
+plot(s_us, '--o');
+legend('Fully sampled','Under sampled');
+title('Normalized singular values of space-time matrix');
 
 return;
 
-%% Plot sampling masks over time
+%% Plot sampling masks and aliased images over time
+Nframes = 1;
+
 figure('WindowState','maximized');
-im(omegas(:,:,1:6)); title('Sampling mask')
+t = tiledlayout(2,1,"TileSpacing","tight");
+nexttile;
+im('row',1,omegas(:,:,1:Nframes)); title('Sampling mask')
 xlabel('ky'); ylabel('kz');
 
-
-%% Plot aliased images over time
-figure('WindowState','maximized');
-im(img_us(:,:,1:6)); title('Aliased image')
+nexttile;
+im('row',1,img_us(:,:,1:Nframes)); title('Aliased image')
 xlabel('ky'); ylabel('kz');
 
 %% Make a movie of point spread functions
