@@ -6,7 +6,7 @@
 % Rex Fung
 
 %% Definte experiment parameters
-setEPIparams; NframesPerLoop = 1;
+setEPIparams;
 
 %% Path and options
 seqname = '3DEPI_loop_rs';
@@ -163,7 +163,7 @@ for frame = 1:NframesPerLoop
         omega_curr = omega(:,z_locs(iz):(z_locs(iz) + caipi_z - 1));
 
         % Infer randomly generated CAIPI shifting order
-        first_ky = zeros(3,1);
+        first_ky = zeros(caipi_z,1);
         for shift = 1:caipi_z
             first_ky(shift) = find(omega_curr(:,shift),1);
         end
@@ -206,7 +206,7 @@ for frame = 1:NframesPerLoop
             for iy = 1:(length(y_locs) - 1)
                 seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)),...
                     mr.scaleGrad(gyBlip, y_locs(iy + 1) - y_locs(iy)),...
-                    mr.scaleGrad(gzBlip, z_shift(mod(iy + 1,caipi_z) + 1) - z_shift(mod(iy,caipi_z) + 1))...
+                    mr.scaleGrad(gzBlip, z_shift(mod(iy,caipi_z) + 1) - z_shift(mod(iy - 1,caipi_z) + 1))...
                     );
             end
 
@@ -259,9 +259,9 @@ fontsize(16,'points');
 figure('WindowState','maximized');
 plot(ktraj(2,:),ktraj(3,:),'b'); % a 2D k-space plot
 axis('equal'); % enforce aspect ratio for the correct trajectory display
-hold;plot(ktraj_adc(2,:),ktraj_adc(3,:),'r.'); % plot the sampling points
+hold; plot(ktraj_adc(2,:),ktraj_adc(3,:),'r.'); % plot the sampling points
 title('full k-space trajectory (k_y x k_z)');
-xlabel('ky'); ylabel('kz');
+xlabel('k_y'); ylabel('k_z');
 
 return;
 %% Optional slow step, but useful for testing during development,

@@ -147,11 +147,11 @@ Nframes = 1;
 figure('WindowState','maximized');
 t = tiledlayout(2,1,"TileSpacing","tight");
 nexttile;
-im('row',1,omegas(:,:,1:Nframes)); title('Sampling mask')
+im('row',1,(-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1),omegas(:,:,1:Nframes)); title('Sampling mask')
 xlabel('ky'); ylabel('kz');
 
 nexttile;
-im('row',1,img_us(:,:,1:Nframes)); title('Aliased image')
+im('row',1,(-Ny/2):(Ny/2 - 1), (-Nz/2):(Nz/2 - 1),img_us(:,:,1:Nframes)); title('Aliased image')
 xlabel('ky'); ylabel('kz');
 
 %% Make a movie of point spread functions
