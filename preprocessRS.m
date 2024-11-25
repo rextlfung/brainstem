@@ -20,9 +20,6 @@ fn_loop = strcat(datdir,'loop.h5');
 doSENSE = false;
 showEPIphaseDiff = true;
 
-%% Parallel computing with 16 workers
-parpool(16);
-
 %% Load data
 % Load raw data from scan archives (takes some time)
 ksp_gre_raw = read_archive(fn_gre);

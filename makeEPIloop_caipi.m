@@ -144,7 +144,10 @@ else
 end
 
 %% Assemble sequence
-seq = mr.Sequence(sys);           
+seq = mr.Sequence(sys);
+
+% log the sequence of k-space locations sampled
+samp_log = zeros(NframesPerLoop,length(1:caipi_z:(Nz - caipi_z + 1))*2*ceil(Ny/Ry/2),2);
 
 % RF spoiling trackers
 rf_count = 1;
@@ -154,6 +157,9 @@ for frame = 1:NframesPerLoop
     fprintf('Writing frame %d\n', frame)
     % Load in kz-ky sampling mask
     omega = omegas(:,:,frame);
+
+    % Reset sample count
+    samp_count = 1;
 
     % kz encoding loop
     % Each "z_loc" is the starting point of a partition of kz locations
@@ -204,6 +210,11 @@ for frame = 1:NframesPerLoop
             % Zip through k-space with EPI trajectory
             seq.addBlock(gro1);
             for iy = 1:(length(y_locs) - 1)
+                % Log sampling locations
+                samp_log(frame,samp_count,:) = [y_locs(iy); z_locs(iz) + z_shift(mod(iy - 1,caipi_z) + 1)];
+                samp_count = samp_count + 1;
+
+                % Sample
                 seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)),...
                     mr.scaleGrad(gyBlip, y_locs(iy + 1) - y_locs(iy)),...
                     mr.scaleGrad(gzBlip, z_shift(mod(iy,caipi_z) + 1) - z_shift(mod(iy - 1,caipi_z) + 1))...
@@ -211,6 +222,11 @@ for frame = 1:NframesPerLoop
             end
 
             % Last line
+            % Log sampling locations
+            samp_log(frame,samp_count,:) = [y_locs(iy + 1); z_locs(iz) + z_shift(mod(iy,caipi_z) + 1)];
+            samp_count = samp_count + 1;
+
+            % Sample
             seq.addBlock(adc, mr.scaleGrad(gro2, (-1)^iy));
         % end ky encoding
 

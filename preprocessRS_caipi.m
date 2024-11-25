@@ -19,7 +19,6 @@ fn_loop = strcat(datdir,'loop.h5');
 % Options
 doSENSE = false;
 showEPIphaseDiff = true;
-parpool(16); % Parallel computing with 16 workers
 
 % Precompute z-partition locations
 z_locs = 1:caipi_z:(Nz - caipi_z + 1);
@@ -68,6 +67,7 @@ cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),length(z_locs),Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
 [M, I] = max(cal_data,[],1);
 delay = mean(I,'all') - Nfid/2;
+delay = -delay;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -89,17 +89,17 @@ fprintf('Linear term (radians/fov): %f\n', a(2));
 %% Grid and apply odd/even correction to loop data
 % Reshape and permute loop data
 ksp_loop = ksp_loop_raw(:,:,1:2*ceil(Ny/Ry/2)*length(z_locs)*Nframes); % discard trailing empty data
-ksp_loop = reshape(ksp_loop,Nfid,Ncoils,2*ceil(Ny/Ry/2),length(z_locs),Nframes);
-ksp_loop = permute(ksp_loop,[1 3 4 2 5]); % [Nfid Ny/Ry Nz/Rz Ncoils Nframes]
+ksp_loop = reshape(ksp_loop,Nfid,Ncoils,2*ceil(Ny/Ry/2)*length(z_locs),Nframes);
+ksp_loop = permute(ksp_loop,[1 3 2 4]); % [Nfid Ny/Ry*Nz/Rz Ncoils Nframes]
 
 % Grid along kx direction via NUFFT (takes a while)
 ksp_loop_cart = zeros([Nx,size(ksp_loop,2:ndims(ksp_loop))]);
 tic
     parfor frame = 1:Nframes
         fprintf('Gridding frame %d\n', round(frame));
-        tmp = squeeze(ksp_loop(:,:,:,:,frame));
+        tmp = squeeze(ksp_loop(:,:,:,frame));
         tmp1 = hmriutils.epi.rampsampepi2cart(tmp, kxo, kxe, Nx, fov(1)*100, 'nufft');
-        ksp_loop_cart(:,:,:,:,frame) = tmp1;
+        ksp_loop_cart(:,:,:,frame) = tmp1;
     end
     delete(gcp('nocreate'))
 toc
@@ -110,17 +110,14 @@ ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a);
 %% Create zero-filled k-space data
 ksp_zf = zeros(Nx,Ny,Nz,Ncoils,Nframes);
 
-% (Re)generate temporally incoherent sampling masks (or load it in)
-omegas = false(Ny,Nz,NframesPerLoop);
-for frame = 1:NframesPerLoop
-    % Create pseudo-random 2D sampling mask. Save for recon
-    rng(frame); % A different mask per frame
-    omega = randsamp2d_caipi(N(2:end), R, max_ky_step, caipi_z);
-    omegas(:,:,frame) = omega;
+% Read through log of sample locations and allocate data
+for frame = 1:Nframes
+    for samp_count = 1:length(1:caipi_z:(Nz - caipi_z + 1))*2*ceil(Ny/Ry/2)
+        iy = samp_log(frame,samp_count,1);
+        iz = samp_log(frame,samp_count,2);
+        ksp_zf(:,iy,iz,:,frame) = ksp_loop_cart(:,samp_count,:,frame);
+    end
 end
-
-% Allocate data
-ksp_zf(:,permute(repmat(omegas,1,1,Nloops,Ncoils),[1 2 4 3])) = ksp_loop_cart(:,:);
 
 %% IFFT to get images
 imgs_mc = ifftshift(ifft(...
@@ -133,7 +130,7 @@ imgs_mc = ifftshift(ifft(...
                     );
 
 %% Free up memory
-clear ksp_loop_cart ksp_loop ksp_loop_raw; 
+% clear ksp_loop_cart ksp_loop ksp_loop_raw;
 
 %% Get sensitivity maps with either BART or PISCO
 % Reshape and permute gre data
@@ -258,24 +255,4 @@ if doSENSE
     im('col',Ncoils,'row',Nz,reshape(permute(squeeze(smaps),[1 2 4 3]),Nx,Ny,Ncoils*Nz),'cbar')
     title('Sensitivity maps');
     ylabel('z direction'); xlabel('Coils');
-end
-
-%% Make GIF (using the gif add-on)
-if false
-    volumeTR = 1; % seconds
-    clims = [min(img_final(:)), max(img_final(:))]; % Set the same dynamic range for each frame
-    imgs_movie = permute(img_final,[2 1 3 4]);
-    imgs_movie = flip(imgs_movie,2);
-    
-    close all;
-    canvas = figure('WindowState','maximized');
-    sgtitle(fn_loop(1:end-2));
-    im('col',Nz,imgs_movie(:,:,:,1),clims,'cbar');
-    xlabel('Frame 1');
-    gif('movie.gif','DelayTime',volumeTR);
-    for frame = 2:Nframes
-        im('col',Nz,imgs_movie(:,:,:,frame),clims,'cbar');
-        xlabel(sprintf('Frame %d',round(frame)));
-        gif;
-    end
 end

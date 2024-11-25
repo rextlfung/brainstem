@@ -1,7 +1,6 @@
 %% Set up
 % load mristack;
 load('/home/rexfung/github/data/myBrain/myBrain.mat')
-close all;
 setEPIparams;
 
 %% Extract one slice
