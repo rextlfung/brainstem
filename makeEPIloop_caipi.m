@@ -253,6 +253,9 @@ else
     fprintf('\n');
 end
 
+%% Save sampling log for recon
+save('samp_logs/samp_log.mat','samp_log','-v7.3');
+
 %% Output for execution
 seq.setDefinition('FOV', fov);
 seq.setDefinition('Name', seqname);

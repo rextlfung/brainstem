@@ -3,8 +3,12 @@
 % Rex Fung, Nov 21st, 2024
 
 %% Set params and options
+% Type of EPI acquitsition. "rand" or "rand_caipi"
+mode = 'rand_caipi';
+
 % Load in params
-setGREparams; setEPIparams;
+setGREparams;
+setEPIparams;
 
 % Total number of frames
 Nloops = 1; % Defined as toppe cv 8 at scanner
@@ -66,8 +70,7 @@ ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny/Ry Nz/Rz Ncoils]
 cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),length(z_locs),Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
 [M, I] = max(cal_data,[],1);
-delay = mean(I,'all') - Nfid/2;
-delay = -delay;
+delay = Nfid/2 - mean(I,'all');
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -109,6 +112,7 @@ ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a);
 
 %% Create zero-filled k-space data
 ksp_zf = zeros(Nx,Ny,Nz,Ncoils,Nframes);
+load('samp_logs/samp_log.mat');
 
 % Read through log of sample locations and allocate data
 for frame = 1:Nframes

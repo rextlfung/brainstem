@@ -13,9 +13,6 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
     'maxRF', 0.25);
 CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
-% Type of EPI acquitsition. "multishot" or "singleshot"
-mode = "singleshot";
-
 % Basic spatial parameters
 res = [1.8 1.8 1.8]*1e-3; % resolution (m)
 fov = [21.6, 21.6, 7.2]*1e-2; % field of view (m)
@@ -24,26 +21,30 @@ Nx = N(1); Ny = N(2); Nz = N(3);
 
 
 % Random sampling parameters
-if strcmp(mode, "singleshot")
-    Ry = 2; Rz = 1;
-    R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
-    acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
-    max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
-    caipi_z = 3;                    % Minimum gap in slow PE direction to prevent duplicate sampling with CAIPI shift
-else
-    Ry = 1; Rz = 1;
+switch mode
+    case 'rand'
+        Ry = 2; Rz = 3;
+        R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
+        acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
+        max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
+    case 'rand_caipi'
+        Ry = 2; Rz = 1;
+        R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
+        acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
+        max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
+        caipi_z = 3;                    % Number of kz locations to acquire per partition
 end
 
 % Number of shots per volume
-if strcmp(mode, "multishot")
-    Nsegments = 4;                  % number of segments in EPI readout
-    Nshots = Nz*Nsegments;          % number of shots per volume
-elseif strcmp(mode, "singleshot")
-    Nshots = ceil(Nz/Rz/caipi_z);           % number of shots per volume
+switch mode
+    case 'rand'
+        Nshots = ceil(Nz/Rz);
+    case 'rand_caipi'
+        Nshots = ceil(Nz/Rz/caipi_z);
 end
 
 % Basic temporal parameters
-Ndummyframes = 4;                   % dummy frames to reach steady state for calibration
+Ndummyframes = 10;                      % dummy frames to reach steady state for calibration
 NframesPerLoop = lcm(40,Nshots)/Nshots; % number of temporal frames to complete one RF spoil cycle
 
 % ADC stuff

@@ -3,6 +3,9 @@
 % Rex Fung, June 17th, 2024
 
 %% Set params and options
+% Type of EPI acquitsition. "rand" or "rand_caipi"
+mode = 'rand';
+
 % Load in params
 setGREparams; setEPIparams;
 
@@ -243,7 +246,7 @@ close all;
 frame = 1;
 figure('WindowState','maximized');
 im(img_final(:,:,:,frame),'cbar')
-title(sprintf('|ZF SENSE combined image|, slices of frame %d',frame));
+title(sprintf('|Zero-filled image|, slices of frame %d',frame));
 ylabel('y'); xlabel('x')
 
 %% Plot Sensitivity maps
