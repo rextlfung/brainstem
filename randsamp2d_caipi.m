@@ -5,7 +5,7 @@
 %
 % Additionally allows for CAIPI-like shifting to sample multiple kz
 % locations per excitation.
-%
+% delay = 1;
 % Input arguments:
 % N = [Ny Nz] = sampling grid dimensions. Positive vector of integers >= 1.
 % R = [Ry Rz] = acceleration factors. Positive vector of integers >= 1.
@@ -93,7 +93,7 @@ function omega = randsamp2d_caipi(N, R, max_ky_step, caipi_z)
         shifts = randperm(caipi_z);
         for i_shift = 1:length(shifts)
             shift = shifts(i_shift);
-            omega(indices_samp_y(i_shift:caipi_z:length(indices_samp_y)), z - 1 + shift) = true;
+            omega(indices_samp_y(i_shift:caipi_z:length(indices_samp_y)), z + shift - 1) = true;
         end
     end
 end
