@@ -1,13 +1,13 @@
 %% Set up
-% load mristack;
-load('/home/rexfung/github/data/myBrain/myBrain.mat')
+load mristack;
+% load('/home/rexfung/github/data/myBrain/myBrain.mat')
 setEPIparams;
 
 %% Extract one slice
-Nframes = 100;
+Nframes = 20;
 % img = ones(100,100,Nframes);
-% img = repmat(double(mristack(:,:,9)).',1,1,Nframes);
-img = repmat(double(V(:,:,size(V,3)/2)).',1,1,Nframes);
+img = repmat(double(mristack(41:80,:,9)).',1,1,Nframes);
+% img = repmat(double(V(:,:,size(V,3)/2)).',1,1,Nframes);
 
 N = size(img,1,2);
 Ny = N(1); Nz = N(2);

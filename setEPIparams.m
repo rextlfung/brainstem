@@ -40,7 +40,7 @@ switch mode
     case 'rand'
         Nshots = ceil(Nz/Rz);
     case 'rand_caipi'
-        Nshots = ceil(Nz/Rz/caipi_z);
+        Nshots = ceil(length(1:caipi_z:(Nz - caipi_z + 1))/Rz);
 end
 
 % Basic temporal parameters

@@ -1,5 +1,5 @@
 % Code for loading and preprocessing randomly undersampled 3D EPI data
-% With CAIPI shifting
+% With CAIPI shiftingj
 % Rex Fung, Nov 21st, 2024
 
 %% Set params and options
@@ -21,7 +21,7 @@ fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
 
 % Options
-doSENSE = false;
+doSENSE = false; % Takes a while
 showEPIphaseDiff = true;
 
 % Precompute z-partition locations
@@ -104,7 +104,6 @@ tic
         tmp1 = hmriutils.epi.rampsampepi2cart(tmp, kxo, kxe, Nx, fov(1)*100, 'nufft');
         ksp_loop_cart(:,:,:,frame) = tmp1;
     end
-    delete(gcp('nocreate'))
 toc
 
 % Phase correct along kx direction
@@ -119,6 +118,11 @@ for frame = 1:Nframes
     for samp_count = 1:length(1:caipi_z:(Nz - caipi_z + 1))*2*ceil(Ny/Ry/2)
         iy = samp_log(frame,samp_count,1);
         iz = samp_log(frame,samp_count,2);
+        if ksp_zf(:,iy,iz,:,frame) ~= 0
+            disp(frame);
+            disp([iy,iz]);
+            pause;
+        end
         ksp_zf(:,iy,iz,:,frame) = ksp_loop_cart(:,samp_count,:,frame);
     end
 end
@@ -199,7 +203,6 @@ if doSENSE
                 smaps_raw(:,:,z,:) = smaps_tmp;
                 eigmaps(:,:,z,:) = eigvals;
             end
-            delete(gcp('nocreate'))
         toc
     elseif strcmp(smaps_technique,'bart')
         fprintf('Estimating sensitivity maps from GRE data via BART...\n')
@@ -249,7 +252,7 @@ close all;
 % Plot a frame
 frame = 1;
 figure('WindowState','maximized');
-im(img_final(:,:,:,frame),'cbar')
+im('mid3',img_final(:,:,:,frame),'cbar')
 title(sprintf('|image|, slices of frame %d',frame));
 ylabel('y'); xlabel('x')
 

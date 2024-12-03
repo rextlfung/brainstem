@@ -32,7 +32,7 @@ fatsat.dur     = 6.0;     % pulse duration (ms)
 wav = toppe.utils.rf.makeslr(fatsat.flip, fatsat.slThick, fatsat.tbw, fatsat.dur, 1e-6, toppe.systemspecs(), ...
     'type', 'ex', ... % fatsat pulse is a 90 so is of type 'ex', not 'st' (small-tip)
     'ftype', 'min', ...
-    'writeModFile', false);
+    'writeModFile', false);  
 
 % Convert from Gauss to Hz, and interpolate to sys.rfRasterTime
 rfp = rf2pulseq(wav, 4e-6, sys.rfRasterTime);
@@ -146,7 +146,7 @@ end
 %% Assemble sequence
 seq = mr.Sequence(sys);
 
-% log the sequence of k-space locations sampled
+% log the sequence of k-space locations sampled (ky and kz)
 samp_log = zeros(NframesPerLoop,length(1:caipi_z:(Nz - caipi_z + 1))*2*ceil(Ny/Ry/2),2);
 
 % RF spoiling trackers
@@ -174,8 +174,9 @@ for frame = 1:NframesPerLoop
             first_ky(shift) = find(omega_curr(:,shift),1);
         end
         [~,z_shift] = sort(first_ky);
+        z_shift = z_shift - 1; % Offset to 0:caipi_z
 
-        gzPreTmp = mr.scaleGrad(gzPre, (z_locs(iz) + (z_shift(1) - 1) - 1 - Nz/2)/(-Nz/2));
+        gzPreTmp = mr.scaleGrad(gzPre, (z_locs(iz) + (z_shift(1) - 1) - Nz/2 - 1)/(-Nz/2));
     
         % Label the first block in each "unique" section with TRID (see Pulseq on GE manual)
         TRID = 1;
@@ -211,23 +212,24 @@ for frame = 1:NframesPerLoop
             seq.addBlock(gro1);
             for iy = 1:(length(y_locs) - 1)
                 % Log sampling locations
-                samp_log(frame,samp_count,:) = [y_locs(iy); z_locs(iz) + z_shift(mod(iy - 1,caipi_z) + 1)];
+                samp_log(frame,samp_count,:) = [y_locs(iy); z_locs(iz) + z_shift(mod(iy-1,caipi_z) + 1)];
                 samp_count = samp_count + 1;
 
                 % Sample
                 seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)),...
                     mr.scaleGrad(gyBlip, y_locs(iy + 1) - y_locs(iy)),...
-                    mr.scaleGrad(gzBlip, z_shift(mod(iy,caipi_z) + 1) - z_shift(mod(iy - 1,caipi_z) + 1))...
+                    mr.scaleGrad(gzBlip, z_shift(mod(iy + 1,caipi_z) + 1) - z_shift(mod(iy-1,caipi_z) + 1))...
                     );
             end
 
             % Last line
             % Log sampling locations
-            samp_log(frame,samp_count,:) = [y_locs(iy + 1); z_locs(iz) + z_shift(mod(iy,caipi_z) + 1)];
+            samp_log(frame,samp_count,:) = [y_locs(iy + 1); z_locs(iz) + z_shift(mod(iy-1,caipi_z) + 1 + 1)];
             samp_count = samp_count + 1;
 
             % Sample
             seq.addBlock(adc, mr.scaleGrad(gro2, (-1)^iy));
+
         % end ky encoding
 
         % rephase kz encoding before spoiling
@@ -265,12 +267,12 @@ seq.write(strcat(seqname, '.seq'));
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
-%% Plot
+%% Plot sequence
 figure();
-% plot(seq, 'timeRange', [0 TR]);
 toppe.plotseq(sysGE, 'timeRange',[0, 2*TR]);
 fontsize(16,'points');
 
+return;
 %% Detailed checks that takes some time to run
 
 % k-space trajectory calculation and plot
