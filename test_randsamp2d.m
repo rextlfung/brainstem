@@ -1,12 +1,12 @@
 %% Set up
 load mristack;
 % load('/home/rexfung/github/data/myBrain/myBrain.mat')
-setEPIparams;
+% setEPIparams;
 
 %% Extract one slice
 Nframes = 20;
 % img = ones(100,100,Nframes);
-img = repmat(double(mristack(41:80,:,9)).',1,1,Nframes);
+img = repmat(double(mristack(:,:,9)).',1,1,Nframes);
 % img = repmat(double(V(:,:,size(V,3)/2)).',1,1,Nframes);
 
 N = size(img,1,2);
@@ -16,7 +16,7 @@ Ny = N(1); Nz = N(2);
 Nframes = size(img,3);
 omegas = false(Ny, Nz, Nframes);
 
-masktype = 'rand_caipi';
+masktype = 'rand_caipi2';
 switch masktype
     case 'full'
         omegas = true(Ny, Nz, Nframes);
@@ -56,7 +56,7 @@ switch masktype
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
 
         for t = 1:Nframes
-            omega = randsamp2d(N,R,acs,max_ky_step);
+            omega = randsamp2d(N, R, acs, max_ky_step);
             omegas(:,:,t) = omega;
         end
     case 'rand_caipi'
@@ -66,12 +66,23 @@ switch masktype
         caipi_z = 3;                    % Minimum gap in slow PE direction to prevent duplicate sampling with CAIPI shift
 
         for t = 1:Nframes
-            omega = randsamp2d_caipi(N,R,max_ky_step,caipi_z);
+            omega = randsamp2d_caipi(N, R, max_ky_step, caipi_z);
+            omegas(:,:,t) = omega;
+        end
+    case 'rand_caipi2'
+        Ry = 2; Rz = 1.5;
+        R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
+        acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
+        max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
+        caipi_z = 3;                    % Minimum gap in slow PE direction to prevent duplicate sampling with CAIPI shift
+
+        for t = 1:Nframes
+            omega = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z);
             omegas(:,:,t) = omega;
         end
 end
 
-% Compute acceleration
+% Compute numerical acceleration factor
 R = numel(omegas)/sum(omegas,'all');
 
 % Select frame for plotting

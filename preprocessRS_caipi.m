@@ -250,10 +250,10 @@ img_gre = sqrt(sum(abs(img_gre_mc).^2,4));
 close all;
 
 % Plot a frame
-frame = 1;
+frame = 20;
 figure('WindowState','maximized');
 im('mid3',img_final(:,:,:,frame),'cbar')
-title(sprintf('|image|, slices of frame %d',frame));
+title(sprintf('|image|, middle 3 planes of frame %d',frame));
 ylabel('y'); xlabel('x')
 
 %% Plot Sensitivity maps
