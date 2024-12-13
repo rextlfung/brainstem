@@ -1,13 +1,13 @@
 %% Set up
-load mristack;
-% load('/home/rexfung/github/data/myBrain/myBrain.mat')
+% load mristack;
+load('/mnt/storage/rexfung/myBrain/myBrainT1.mat')
 % setEPIparams;
 
 %% Extract one slice
 Nframes = 20;
 % img = ones(100,100,Nframes);
-img = repmat(double(mristack(:,:,9)).',1,1,Nframes);
-% img = repmat(double(V(:,:,size(V,3)/2)).',1,1,Nframes);
+% img = repmat(double(mristack(:,:,9)).',1,1,Nframes);
+img = repmat(double(V(:,:,size(V,3)/2)).',1,1,Nframes);
 
 N = size(img,1,2);
 Ny = N(1); Nz = N(2);
@@ -70,14 +70,30 @@ switch masktype
             omegas(:,:,t) = omega;
         end
     case 'rand_caipi2'
-        Ry = 2; Rz = 1.5;
+        Ry = 2; Rz = 1.2;
         R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
         acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
         caipi_z = 3;                    % Minimum gap in slow PE direction to prevent duplicate sampling with CAIPI shift
 
         for t = 1:Nframes
-            omega = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z);
+            [omega, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z);
+
+            % Randomized CAIPIfication
+            indices_samp_z = find(sum(omega,1));
+            for z = indices_samp_z
+                if ismember(z, nacs_indices_samp_z)
+                    indices_samp_y = find(omega(:,z));
+                    for iy = 1:caipi_z:length(indices_samp_y)
+                        shifts = randperm(caipi_z) - ceil(caipi_z/2);
+                        for iz = 1:min(caipi_z, length(indices_samp_y) - iy + 1)
+                            omega(indices_samp_y(iy + iz - 1),z) = false;
+                            omega(indices_samp_y(iy + iz - 1),z + shifts(iz)) = true;
+                        end
+                    end
+                end
+            end
+
             omegas(:,:,t) = omega;
         end
 end

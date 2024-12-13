@@ -16,7 +16,10 @@
 % locations. Positive integer >= 1.
 %
 % Output arguments:
-% omega = sampling mask. Boolean matrix of size [Ny Nz].
+% omega = sampling mask without CAIPI shifts. Boolean matrix of size [Ny Nz].
+% nacs_indices_samp_z = linear indices of z locations outside the ACS zone.
+% Used to determine when to apply CAIPI shifts when constructing the pulse
+% sequence. Vector of length [Nz_nacs].
 %
 % Design constraints:
 % 1. Even number of samples about the center of k-space along the fast PE
@@ -29,7 +32,7 @@
 %
 % Last modified Dec 6th, 2024. Rex Fung
 
-function omega = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z)
+function [omega, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z)
     % Unpack input arguments
     Ny = N(1);Nz = N(2);
     Ry = R(1); Rz = R(2);
@@ -142,15 +145,17 @@ function omega = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z)
         indices_y = sort([acs_indices_y, reshape(nacs_indices_samp_y, 1, Ny_nacs)]);
 
         % Randomized CAIPI-shifting outside the ACS zone
-        if ismember(z, nacs_indices_samp_z)
-            for iy = 1:caipi_z:length(indices_y)
-                shifts = randperm(caipi_z) - ceil(caipi_z/2);
-                for iz = 1:min(caipi_z, length(indices_y) - iy + 1)
-                    omega(indices_y(iy + iz - 1),z + shifts(iz)) = true;
-                end
-            end
-        else
-            omega(indices_y,z) = true;
-        end
+        % Commented out to be instead applied during sequence construction
+        % if ismember(z, nacs_indices_samp_z)
+        %     for iy = 1:caipi_z:length(indices_y)
+        %         shifts = randperm(caipi_z) - ceil(caipi_z/2);
+        %         for iz = 1:min(caipi_z, length(indices_y) - iy + 1)
+        %             omega(indices_y(iy + iz - 1),z + shifts(iz)) = true;
+        %         end
+        %     end
+        % else
+        %     omega(indices_y,z) = true;
+        % end
+        omega(indices_y,z) = true;
     end
 end
