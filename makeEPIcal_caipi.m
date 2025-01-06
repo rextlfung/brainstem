@@ -18,6 +18,7 @@
 % Last modified August 26th, 2024
 
 %% Definte experiment parameters
+mode = 'rand_caipi';
 setEPIparams;
 
 %% Path and options
@@ -207,7 +208,7 @@ for frame = -Ndummyframes:0
     
             % Zip through k-space with EPI trajectory
             seq.addBlock(gro1);
-            for iy = 1:(length(y_locs) - 1)
+            for iy = 1:(2*ceil(Ny/Ry/2) - 1)
                 if isCalFrame
                     seq.addBlock(adc, mr.scaleGrad(gro, (-1)^(iy-1)),...
                         mr.scaleGrad(gyBlip, 0));

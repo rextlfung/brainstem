@@ -28,7 +28,7 @@ switch mode
         acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
     case 'rand_caipi'
-        Ry = 2; Rz = 1.2;
+        Ry = 2; Rz = 1.3;
         R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
         acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
@@ -52,8 +52,8 @@ dwell = 4e-6;                       % ADC sample time (s). For GE, must be multi
 
 % Decay parameters
 TE = 30e-3;                         % echo time (s)
-volumeTR = 0.9;                     % temporal frame rate (s)
-TR = volumeTR/Nshots;      % time to acquire one shot (s)
+volumeTR = 0.8;                     % temporal frame rate (s)
+TR = volumeTR/Nshots;               % time to acquire one shot (s)
 T1 = 1500e-3;                       % T1 (s)
 
 % Exciting stuff

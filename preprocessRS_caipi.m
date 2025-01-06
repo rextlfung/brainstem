@@ -15,17 +15,17 @@ Nloops = 1; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20241121ball/';
+datdir = '/mnt/storage/rexfung/20241213ball/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
 fn_loop = strcat(datdir,'loop.h5');
 
 % Options
-doSENSE = false; % Takes a while
+doSENSE = true; % Takes a while
 showEPIphaseDiff = true;
 
 % Precompute z-partition locations
-z_locs = 1:caipi_z:(Nz - caipi_z + 1);
+% z_locs = 1:caipi_z:(Nz - caipi_z + 1);
 
 %% Load data
 % Load raw data from scan archives (takes some time)
@@ -62,19 +62,19 @@ fprintf('Max imag part of loop data: %d\n', max(imag(ksp_loop_raw(:))))
 
 %% Compute odd/even delays using calibration (blipless) data
 % Reshape and permute calibration data (a single frame w/out blips)
-ksp_cal = ksp_cal_raw(:,:,1:2*ceil(Ny/Ry/2)*length(z_locs)); % discard trailing data
-ksp_cal = reshape(ksp_cal,Nfid,Ncoils,2*ceil(Ny/Ry/2), length(z_locs));
+ksp_cal = ksp_cal_raw(:,:,1:2*ceil(Ny/Ry/2)*round(Nz/caipi_z/Rz)); % discard trailing data
+ksp_cal = reshape(ksp_cal,Nfid,Ncoils,2*ceil(Ny/Ry/2), round(Nz/caipi_z/Rz));
 ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny/Ry Nz/Rz Ncoils]
 
 % Estimate k-space center offset due to gradient delay
-cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),length(z_locs),Ncoils);
+cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),round(Nz/caipi_z/Rz),Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
 [M, I] = max(cal_data,[],1);
-delay = Nfid/2 - mean(I,'all');
+delay = Nfid/2 - mean(I,'all'); delay = 1.5;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
-fn_adc = sprintf('adc/adc%d.mod',Nfid);
+fn_adc = sprintf('adc%d.mod',Nfid);
 [rf,gx,gy,gz,desc,paramsint16,pramsfloat,hdr] = toppe.readmod(fn_adc);
 [kxo, kxe] = toppe.utils.getk(sysGE, fn_adc, Nfid, delay);
 
@@ -84,15 +84,15 @@ oephase_data = ksp_cal(:,1:ETL_even,:,:,:);
 
 % EPI ghost correction phase offset values
 oephase_data = hmriutils.epi.rampsampepi2cart(oephase_data, kxo, kxe, Nx, fov(1)*100, 'nufft');
-oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,ETL_even,length(z_locs)*Ncoils)),Nx,1));
+oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,ETL_even,round(Nz/caipi_z/Rz)*Ncoils)),Nx,1));
 [a, th] = hmriutils.epi.getoephase(oephase_data,showEPIphaseDiff);
 fprintf('Constant phase offset (radians): %f\n', a(1));
 fprintf('Linear term (radians/fov): %f\n', a(2));
 
 %% Grid and apply odd/even correction to loop data
 % Reshape and permute loop data
-ksp_loop = ksp_loop_raw(:,:,1:2*ceil(Ny/Ry/2)*length(z_locs)*Nframes); % discard trailing empty data
-ksp_loop = reshape(ksp_loop,Nfid,Ncoils,2*ceil(Ny/Ry/2)*length(z_locs),Nframes);
+ksp_loop = ksp_loop_raw(:,:,1:2*ceil(Ny/Ry/2)*round(Nz/caipi_z/Rz)*Nframes); % discard trailing empty data
+ksp_loop = reshape(ksp_loop,Nfid,Ncoils,2*ceil(Ny/Ry/2)*round(Nz/caipi_z/Rz),Nframes);
 ksp_loop = permute(ksp_loop,[1 3 2 4]); % [Nfid Ny/Ry*Nz/Rz Ncoils Nframes]
 
 % Grid along kx direction via NUFFT (takes a while)
@@ -115,7 +115,7 @@ load('samp_logs/samp_log.mat');
 
 % Read through log of sample locations and allocate data
 for frame = 1:Nframes
-    for samp_count = 1:length(1:caipi_z:(Nz - caipi_z + 1))*2*ceil(Ny/Ry/2)
+    for samp_count = 1:2*ceil(Ny/Ry/2)*round(Nz/caipi_z/Rz)
         iy = samp_log(frame,samp_count,1);
         iz = samp_log(frame,samp_count,2);
         if ksp_zf(:,iy,iz,:,frame) ~= 0
@@ -263,3 +263,9 @@ if doSENSE
     title('Sensitivity maps');
     ylabel('z direction'); xlabel('Coils');
 end
+
+return;
+%% Save for next step of recon
+save(strcat(datdir,'recon/kdata.mat'),'ksp_zf','-v7.3');
+save(strcat(datdir,'recon/smaps.mat'),'smaps','-v7.3');
+

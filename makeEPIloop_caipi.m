@@ -6,6 +6,7 @@
 % Rex Fung
 
 %% Definte experiment parameters
+mode = 'rand_caipi';
 setEPIparams;
 
 %% Path and options
