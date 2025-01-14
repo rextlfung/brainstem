@@ -120,11 +120,14 @@ gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2,
 gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2),'Duration',Tpre),CRT,sys);
 gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3),'Duration',Tpre),CRT,sys);
 
-% Spoilers (only in x and z because ?)
+% Spoilers (conventionally only in x and z because ??, might as well do so in y)
 gxSpoil = trap4ge(mr.makeTrapezoid('x', sys, ...
     'Area', Nx*deltak(1)*NcyclesSpoil),CRT,sys);
-gzSpoil = trap4ge(mr.makeTrapezoid('z', sys, ...
-    'Area', Nz*deltak(3)*NcyclesSpoil),CRT,sys);
+gySpoil = trap4ge(mr.makeTrapezoid('y', sys, ...
+    'Area', Ny*deltak(2)*NcyclesSpoil),CRT,sys);
+gzSpoil = trap4ge(mr.scaleGrad(...
+    mr.makeTrapezoid('z', sys, 'Area', Nz*deltak(3)*(NcyclesSpoil + 0.5)),...
+    NcyclesSpoil/(NcyclesSpoil + 0.5)),CRT,sys);
 
 %% Calculate delay to achieve desired TE
 minTE = 0.5*mr.calcDuration(rf)...
@@ -169,7 +172,7 @@ samp_log = zeros(NframesPerLoop, ...
 rf_count = 1;
 rf_phase = rf_phase_0;
 
-for frame = 1:NframesPerLoop
+for frame = 1:1
     fprintf('Writing frame %d\n', frame)
     % Load in kz-ky sampling mask (unshifted), and indices to be shifted
     omega = omegas(:,:,frame);
@@ -186,7 +189,7 @@ for frame = 1:NframesPerLoop
         TRID = 1;
 
         % Fat-sat
-        seq.addBlock(rfsat,mr.makeLabel('SET','TRID',TRID));
+        seq.addBlock(rfsat, mr.makeLabel('SET','TRID',TRID));
         seq.addBlock(gxSpoil, gzSpoil);
 
         % RF spoiling
@@ -196,7 +199,7 @@ for frame = 1:NframesPerLoop
         rf_count = rf_count + 1;
 
         % Slab-selective RF excitation + rephase
-        seq.addBlock(rf,gzSS);
+        seq.addBlock(rf, gzSS);
         seq.addBlock(gzSSR);
 
         % TE delay
@@ -245,11 +248,10 @@ for frame = 1:NframesPerLoop
 
         % End ky encoding
 
-        % rephase kz encoding before spoiling
-        seq.addBlock(mr.scaleGrad(gzPreTmp, -1));
-
-        % spoil
-        seq.addBlock(gxSpoil, gzSpoil);
+        % spoilers to reach the same point in k-space at the end of each TR
+        seq.addBlock(gxSpoil, ...
+            mr.scaleGrad(gySpoil, (gySpoil.area - (y_locs(end) - Ny/2)*deltak(2))/gySpoil.area), ...
+            mr.scaleGrad(gzSpoil, (gzSpoil.area - (z + z_shifts(end) - Nz/2)*deltak(3))/gzSpoil.area));
 
         % Achieve desired TR
         if TR > minTR
@@ -282,7 +284,7 @@ system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
 %% Plot sequence
 figure();
-toppe.plotseq(sysGE, 'timeRange',[0, 11*TR]);
+toppe.plotseq(sysGE, 'timeRange',[0, Nshots*TR]);
 fontsize(16,'points');
 
 return;
