@@ -9,6 +9,8 @@
 mode = 'rand_caipi';
 setEPIparams;
 
+% TEMPORARY MODIFICATIONS
+% NframesPerLoop = NframesPerLoop*10;
 %% Path and options
 seqname = '3DEPI_loop_rs';
 addpath('excitation');
@@ -50,17 +52,17 @@ rfsat.signal = rfsat.signal/max(abs(rfsat.signal))*max(abs(rfp)); % ensure corre
 rfsat.freqOffset = -fatOffresFreq; % Hz
 
 %% Generate temporally incoherent sampling masks
-% WITHOUT CAIPI shifts, which will be applied during sequence construction
 omegas = zeros(Ny,Nz,NframesPerLoop);
-z_shift_indices = zeros(round(Nz/Rz/caipi_z - Nz*acs(2)),NframesPerLoop);
+acs_indices_z = zeros(round(Nz*acs(2)), 1); % constant
+nacs_indices_z = zeros(round(Nz/Rz/caipi_z) - round(Nz*acs(2)), NframesPerLoop);
 for frame = 1:NframesPerLoop
     % Create pseudo-random 2D sampling mask. Save for recon
     rng(frame); % A different mask per frame
-    [omega, nacs_indices_samp_z] = randsamp2d_caipi2(N(2:end), R, acs, max_ky_step, caipi_z);
-    omegas(:,:,frame) = omega;
-    z_shift_indices(:,frame) = nacs_indices_samp_z;
+    [omegas(:,:,frame), ...
+     acs_indices_z, ...
+     nacs_indices_z(:,frame)] ...
+     = randsamp2d_caipi2(N(2:end), R, acs, max_ky_step, caipi_z);
 end
-
 %% Define readout gradients and ADC event
 % The Pulseq toolbox really shines here!
 
@@ -161,6 +163,10 @@ else
 end
 
 %% Assemble sequence
+% manually set to 0 to avoid annoying warnings. 
+% Shouldn't be a problem since I don't have back-to-back blocks with adc.
+sys.adcDeadTime = 0;
+
 seq = mr.Sequence(sys);
 
 % log the sequence of k-space locations sampled (ky and kz)
@@ -172,18 +178,17 @@ samp_log = zeros(NframesPerLoop, ...
 rf_count = 1;
 rf_phase = rf_phase_0;
 
-for frame = 1:1
+for frame = 1:NframesPerLoop
     fprintf('Writing frame %d\n', frame)
-    % Load in kz-ky sampling mask (unshifted), and indices to be shifted
+    % Load in kz-ky sampling mask
     omega = omegas(:,:,frame);
-    nacs_indices_samp_z = z_shift_indices(:,frame);
 
     % Reset sample count
     samp_count = 1;
 
     % kz encoding loop
     % Each "z_loc" is the starting point of a partition of kz locations
-    z_locs = find(sum(omega,1));
+    z_locs = sort([acs_indices_z, nacs_indices_z(:,frame)']);
     for z = z_locs
         % Label the first block in each "unique" section with TRID (see Pulseq on GE manual)
         TRID = 1;
@@ -206,24 +211,26 @@ for frame = 1:1
         if TE > minTE
             seq.addBlock(mr.makeDelay(TEdelay));
         end
-        
-        % Begin ky encoding
-        y_locs = find(omega(:,z));
 
-        % Randomly generate order of caipi shifts for this echo train
-        z_shifts = zeros(1,length(y_locs));
-        if ismember(z, nacs_indices_samp_z)
-            for iy = 1:caipi_z:length(y_locs)
-                z_shifts(iy:(iy + caipi_z - 1)) = randperm(caipi_z) - ceil(caipi_z/2);
+        % Infer caipi shifts from sampling mask
+        z_shifts = zeros(1, 2*round(Ny/Ry/2));
+        if ismember(z, nacs_indices_z(:,frame))
+            l = (caipi_z - 1) / 2; % caipi neighborhood "radius"
+            part = omega(:,z-l:z+l);
+            y_locs = find(sum(part,2));
+            for i = 1:length(y_locs)
+                z_shifts(i) = find(part(y_locs(i),:)) - l - 1;
             end
-            z_shifts = z_shifts(1:length(y_locs));
+        else
+            y_locs = find(omega(:,z));
         end
 
         % Move to corner of k-space
         gzPreTmp = mr.scaleGrad(gzPre, (z + z_shifts(1) - Nz/2 - 1)/(-Nz/2));
         gyPreTmp = mr.scaleGrad(gyPre, (y_locs(1) - Ny/2 - 1)/(-Ny/2));
         seq.addBlock(gxPre, gyPreTmp, gzPreTmp);
-    
+
+        % Begin ky encoding
         % Zip through k-space with EPI trajectory
         seq.addBlock(gro1);
         for iy = 1:(length(y_locs) - 1)
@@ -264,7 +271,7 @@ end
 [ok, error_report] = seq.checkTiming;
 if (ok)
     fprintf('Timing check passed successfully\n');
-else
+else        
     fprintf('Timing check failed! Error listing follows:\n');
     fprintf([error_report{:}]);
     fprintf('\n');
@@ -279,12 +286,18 @@ seq.setDefinition('Name', seqname);
 seq.write(strcat(seqname, '.seq'));
 
 %% GE stuff
+% manually set to 0 to avoid annoying warnings. 
+% Shouldn't be a problem since I don't have back-to-back blocks with adc.
+sysGE.adcDeadTime = 0;
+
+% write to GE compatible files
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
+return;
 %% Plot sequence
 figure();
-toppe.plotseq(sysGE, 'timeRange',[0, Nshots*TR]);
+toppe.plotseq(sysGE, 'timeRange',[0, Nshots*max(minTR, TR)]);
 fontsize(16,'points');
 
 return;

@@ -13,7 +13,7 @@
 % PE (ky) locations.
 % caipi_z = Number of kz locations to be sampled per shot outside of the
 % ACS zone. Constrains the minimum gap between adjacent sampled kz
-% locations. Positive integer >= 1.
+% locations. Positive odd integer >= 1.
 %
 % Output arguments:
 % omega = sampling mask without CAIPI shifts. Boolean matrix of size [Ny Nz].
@@ -30,33 +30,28 @@
 % 3. For kz, outside the ACS zone, randomly sample locations with minimal
 % gap equivalent to caipi_z to prevent replicate sampling locations.
 %
-% Last modified Dec 6th, 2024. Rex Fung
+% Last modified Jan 14th, 2025. Rex Fung
 
-function [omega, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z)
+function [omega, acs_indices_z, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z)
     % Unpack input arguments
-    Ny = N(1);Nz = N(2);
+    Ny = N(1); Nz = N(2);
     Ry = R(1); Rz = R(2);
     acs_y = acs(1); acs_z = acs(2);
 
     % Validate input arguments
-    assert(Ny >= 1 && ...
-           Nz >= 1, ...
+    assert(Ny >= 1 && Nz >= 1, ...
            'Dimensions must be >= 1');
-    assert(Ry >= 1 && ...
-           Rz >= 1, ...
+    assert(Ry >= 1 && Rz >= 1, ...
            'Acceleration factors must be >= 1');
-    assert(0 <= acs_y && ...
-           acs_y < 1 && ...
-           0 <= acs_z && ...
-           acs_z < 1, ...
+    assert(0 <= acs_y && acs_y < 1 && ...
+           0 <= acs_z && acs_z < 1, ...
            'ACS portions must be between [0, 1)');
-    assert(acs_y <= 1/Ry && ...
-           acs_z <= 1/Rz, ...
+    assert(acs_y <= 1/Ry && acs_z <= 1/Rz, ...
            'ACS portion cannot be larger than undersampling factor');
     assert(max_ky_step >= 1, ...
            'max_ky_step must be >= 1');
-    assert(caipi_z >= 1, ...
-           'caipi_z must be >= 1');
+    assert(caipi_z >= 1 && mod(caipi_z, 2) == 1, ...
+           'caipi_z must be >= 1 and odd-valued');
 
     % Compute number of ACS lines (even about ky = 0)
     Ny_acs = 2*round(acs_y*Ny/2);
@@ -69,8 +64,8 @@ function [omega, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, acs, max_ky_step
     nacs_indices_y = [1:(acs_indices_y(1) - 1);
                       (acs_indices_y(end) + 1):Ny];
     % Prevent caipi shifts from hitting ACS region or outside [1, Nz]
-    nacs_indices_z = [ceil(caipi_z/2):(acs_indices_z(1) - 1 - ceil(caipi_z/2)), ...
-                      (acs_indices_z(end) + 1 + ceil(caipi_z/2)):Nz - ceil(caipi_z/2)];
+    nacs_indices_z = [ceil(caipi_z/2):(acs_indices_z(1) - ceil(caipi_z/2)), ...
+                      (acs_indices_z(end) + ceil(caipi_z/2)):Nz - ceil(caipi_z/2) + 1];
 
     % Compute the number of non-ACS locations to sample based on R
     Ny_nacs = 2*round((Ny/Ry - Ny_acs)/2); % Ensure even number
@@ -145,17 +140,15 @@ function [omega, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, acs, max_ky_step
         indices_y = sort([acs_indices_y, reshape(nacs_indices_samp_y, 1, Ny_nacs)]);
 
         % Randomized CAIPI-shifting outside the ACS zone
-        % Commented out to be instead applied during sequence construction
-        % if ismember(z, nacs_indices_samp_z)
-        %     for iy = 1:caipi_z:length(indices_y)
-        %         shifts = randperm(caipi_z) - ceil(caipi_z/2);
-        %         for iz = 1:min(caipi_z, length(indices_y) - iy + 1)
-        %             omega(indices_y(iy + iz - 1),z + shifts(iz)) = true;
-        %         end
-        %     end
-        % else
-        %     omega(indices_y,z) = true;
-        % end
-        omega(indices_y,z) = true;
+        if ismember(z, nacs_indices_samp_z)
+            for iy = 1:caipi_z:length(indices_y)
+                shifts = randperm(caipi_z) - ceil(caipi_z/2);
+                for iz = 1:min(caipi_z, length(indices_y) - iy + 1)
+                    omega(indices_y(iy + iz - 1),z + shifts(iz)) = true;
+                end
+            end
+        else
+            omega(indices_y,z) = true;
+        end
     end
 end

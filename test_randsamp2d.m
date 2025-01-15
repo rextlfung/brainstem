@@ -70,11 +70,11 @@ switch masktype
             omegas(:,:,t) = omega;
         end
     case 'rand_caipi2'
-        Ry = 2; Rz = 1.2;
+        Ry = 1; Rz = 1;
         R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
-        acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
+        acs = [1/8 1/8];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
-        caipi_z = 3;                    % Minimum gap in slow PE direction to prevent duplicate sampling with CAIPI shift
+        caipi_z = 1;                    % Minimum gap in slow PE direction to prevent duplicate sampling with CAIPI shift
 
         for t = 1:Nframes
             [omega, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, acs, max_ky_step, caipi_z);
