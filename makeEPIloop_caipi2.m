@@ -10,7 +10,7 @@ mode = 'rand_caipi';
 setEPIparams;
 
 % TEMPORARY MODIFICATIONS
-% NframesPerLoop = NframesPerLoop*10;
+NframesPerLoop = NframesPerLoop;
 %% Path and options
 seqname = '3DEPI_loop_rs';
 addpath('excitation');
@@ -53,7 +53,7 @@ rfsat.freqOffset = -fatOffresFreq; % Hz
 
 %% Generate temporally incoherent sampling masks
 omegas = zeros(Ny,Nz,NframesPerLoop);
-acs_indices_z = zeros(round(Nz*acs(2)), 1); % constant
+acs_indices_z = zeros(round(Nz*acs(2)), 1); % same for all frames
 nacs_indices_z = zeros(round(Nz/Rz/caipi_z) - round(Nz*acs(2)), NframesPerLoop);
 for frame = 1:NframesPerLoop
     % Create pseudo-random 2D sampling mask. Save for recon

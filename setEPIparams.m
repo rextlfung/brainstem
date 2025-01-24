@@ -28,9 +28,9 @@ switch mode
         acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
     case 'rand_caipi'
-        Ry = 2; Rz = 1.2;
+        Ry = 1; Rz = 1;
         R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
-        acs = [1/8 1/8];              % Central portion of ky-kz space to fully sample
+        acs = [1/8 1/8];                % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
         caipi_z = 3;                    % Number of kz locations to acquire per partition
 end
@@ -44,16 +44,17 @@ switch mode
 end
 
 % Basic temporal parameters
-Ndummyframes = 10;                      % dummy frames to reach steady state for calibration
+Ndummyframes = 2;                      % dummy frames to reach steady state for calibration
 NframesPerLoop = lcm(40,Nshots)/Nshots; % number of temporal frames to complete one RF spoil cycle
 
 % ADC stuff
 dwell = 4e-6;                       % ADC sample time (s). For GE, must be multiple of 2us.
 
 % Decay parameters
-TE = 30e-3;                         % echo time (s)
+TE = 40e-3;                         % echo time (s)
 volumeTR = 0.9;                     % temporal frame rate (s)
-TR = volumeTR/Nshots;      % time to acquire one shot (s)
+TR = volumeTR/Nshots;               % time to acquire one shot (s)
+TR = 90e-3;
 T1 = 1500e-3;                       % T1 (s)
 
 % Exciting stuff

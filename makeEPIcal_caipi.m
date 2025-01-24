@@ -82,7 +82,7 @@ gzBlip = trap4ge(mr.scaleGrad(mr.makeTrapezoid('z', sys, 'Area', caipi_z*deltak(
 
 % Area and duration of the biggest blip
 if max_ky_step*deltak(2) > caipi_z*deltak(3)
-    maxBlipArea = biggest_ky_step*deltak(2);
+    maxBlipArea = max_ky_step*deltak(2);
     blipDuration = mr.calcDuration(gyBlip);
 else
     maxBlipArea = caipi_z*deltak(3);
@@ -156,6 +156,10 @@ else
 end
 
 %% Assemble sequence
+% manually set to 0 to avoid annoying warnings. 
+% Shouldn't be a problem since I don't have back-to-back blocks with adc.
+sys.adcDeadTime = 0;
+
 seq = mr.Sequence(sys);
 
 % RF spoiling trackers
@@ -252,9 +256,14 @@ seq.setDefinition('Name', seqname);
 seq.write(strcat(seqname, '.seq'));
 
 %% GE stuff
+% manually set to 0 to avoid annoying warnings. 
+% Shouldn't be a problem since I don't have back-to-back blocks with adc.
+sysGE.adcDeadTime = 0;
+
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
+return;
 %% Plot
 figure('WindowState','maximized');
 toppe.plotseq(sysGE, 'timeRange', [0 (Ndummyframes + 1)*TR]);

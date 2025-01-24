@@ -1,5 +1,5 @@
 % Code for loading and preprocessing randomly undersampled 3D EPI data
-% With CAIPI shiftingj
+% With CAIPI shifting
 % Rex Fung, Nov 21st, 2024
 
 %% Set params and options
@@ -12,20 +12,18 @@ setEPIparams;
 
 % Total number of frames
 Nloops = 1; % Defined as toppe cv 8 at scanner
-Nframes = Nloops*NframesPerLoop;
+Nframes = Nloops*NframesPerLoop*3;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20241213ball/';
+datdir = '/mnt/storage/rexfung/20250117ball/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'loop.h5');
+fn_loop = strcat(datdir,'loop14.h5');
+fn_samp_log = strcat(datdir,'samp_logs/14.mat');
 
 % Options
-doSENSE = true; % Takes a while
+doSENSE = false; % Takes a while
 showEPIphaseDiff = true;
-
-% Precompute z-partition locations
-% z_locs = 1:caipi_z:(Nz - caipi_z + 1);
 
 %% Load data
 % Load raw data from scan archives (takes some time)
@@ -70,11 +68,11 @@ ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny/Ry Nz/Rz Ncoils]
 cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),round(Nz/caipi_z/Rz),Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
 [M, I] = max(cal_data,[],1);
-delay = Nfid/2 - mean(I,'all'); delay = 1.5;
+delay = Nfid/2 - mean(I,'all');
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
-fn_adc = sprintf('adc%d.mod',Nfid);
+fn_adc = strcat(datdir, sprintf('adc%d.mod',Nfid));
 [rf,gx,gy,gz,desc,paramsint16,pramsfloat,hdr] = toppe.readmod(fn_adc);
 [kxo, kxe] = toppe.utils.getk(sysGE, fn_adc, Nfid, delay);
 
@@ -111,7 +109,7 @@ ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a);
 
 %% Create zero-filled k-space data
 ksp_zf = zeros(Nx,Ny,Nz,Ncoils,Nframes);
-load('samp_logs/samp_log.mat');
+load(fn_samp_log);
 
 % Read through log of sample locations and allocate data
 for frame = 1:Nframes
@@ -234,13 +232,13 @@ end
 
 %% Coil combination
 if doSENSE
-    img_final = squeeze(sum(imgs_mc .* conj(smaps), 4));
+    img = squeeze(sum(imgs_mc .* conj(smaps), 4));
 else % root sum of squares combination
-    img_final = squeeze(sqrt(sum(abs(imgs_mc).^2, 4)));
+    img = squeeze(sqrt(sum(abs(imgs_mc).^2, 4)));
 end
 
 %% Compute k-space by IFT3
-ksp_final = toppe.utils.ift3(img_final);
+ksp_final = toppe.utils.ift3(img);
 
 %% Recon GRE images
 img_gre_mc = toppe.utils.ift3(ksp_gre);
@@ -250,9 +248,9 @@ img_gre = sqrt(sum(abs(img_gre_mc).^2,4));
 close all;
 
 % Plot a frame
-frame = 20;
+frame = size(img,ndims(img));
 figure('WindowState','maximized');
-im('mid3',img_final(:,:,:,frame),'cbar')
+im('mid3',img(:,:,:,frame),'cbar')
 title(sprintf('|image|, middle 3 planes of frame %d',frame));
 ylabel('y'); xlabel('x')
 
