@@ -12,17 +12,17 @@ setEPIparams;
 
 % Total number of frames
 Nloops = 1; % Defined as toppe cv 8 at scanner
-Nframes = Nloops*NframesPerLoop*3;
+Nframes = Nloops*NframesPerLoop;
 
 % Filenames
 datdir = '/mnt/storage/rexfung/20250117ball/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'loop14.h5');
-fn_samp_log = strcat(datdir,'samp_logs/14.mat');
+fn_loop = strcat(datdir,'loop13.h5');
+fn_samp_log = strcat(datdir,'samp_logs/13.mat');
 
 % Options
-doSENSE = false; % Takes a while
+doSENSE = true; % Takes a while
 showEPIphaseDiff = true;
 
 %% Load data
@@ -60,12 +60,12 @@ fprintf('Max imag part of loop data: %d\n', max(imag(ksp_loop_raw(:))))
 
 %% Compute odd/even delays using calibration (blipless) data
 % Reshape and permute calibration data (a single frame w/out blips)
-ksp_cal = ksp_cal_raw(:,:,1:2*ceil(Ny/Ry/2)*round(Nz/caipi_z/Rz)); % discard trailing data
-ksp_cal = reshape(ksp_cal,Nfid,Ncoils,2*ceil(Ny/Ry/2), round(Nz/caipi_z/Rz));
-ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny/Ry Nz/Rz Ncoils]
+ksp_cal = ksp_cal_raw(:,:,1:Ny*Nz); % discard trailing data
+ksp_cal = reshape(ksp_cal,Nfid,Ncoils,Ny,Nz);
+ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny Nz Ncoils]
 
 % Estimate k-space center offset due to gradient delay
-cal_data = reshape(abs(ksp_cal),Nfid,2*ceil(Ny/Ry/2),round(Nz/caipi_z/Rz),Ncoils);
+cal_data = reshape(abs(ksp_cal),Nfid,Ny,Nz,Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
 [M, I] = max(cal_data,[],1);
 delay = Nfid/2 - mean(I,'all');
@@ -82,7 +82,7 @@ oephase_data = ksp_cal(:,1:ETL_even,:,:,:);
 
 % EPI ghost correction phase offset values
 oephase_data = hmriutils.epi.rampsampepi2cart(oephase_data, kxo, kxe, Nx, fov(1)*100, 'nufft');
-oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,ETL_even,round(Nz/caipi_z/Rz)*Ncoils)),Nx,1));
+oephase_data = ifftshift(ifft(fftshift(reshape(oephase_data,Nx,ETL_even,Nz*Ncoils)),Nx,1));
 [a, th] = hmriutils.epi.getoephase(oephase_data,showEPIphaseDiff);
 fprintf('Constant phase offset (radians): %f\n', a(1));
 fprintf('Linear term (radians/fov): %f\n', a(2));
@@ -125,11 +125,23 @@ for frame = 1:Nframes
     end
 end
 
+%% Rebuild sampling mask from samp_log
+omega = zeros(Ny, Nz);
+for f = 1:size(samp_log, 1)
+    for k = 1:size(samp_log, 2)
+        omega(samp_log(f,k,1), samp_log(f,k,2)) = omega(samp_log(f,k,1), samp_log(f,k,2)) + 1;
+    end
+end
+
+%% Average across temporal dimension
+ksp_mc = sum(ksp_zf,5)./permute(repmat(omega,[1 1 Nx Ncoils]), [3 1 2 4]);
+ksp_mc(isnan(ksp_mc)) = 0;
+
 %% IFFT to get images
 imgs_mc = ifftshift(ifft(...
                      ifft(...
                       ifft(...
-                       fftshift(ksp_zf)...
+                       fftshift(ksp_mc)...
                        , Nx, 1)...
                       , Ny, 2)...
                      , Nz, 3)...
@@ -247,12 +259,26 @@ img_gre = sqrt(sum(abs(img_gre_mc).^2,4));
 %% Viz
 close all;
 
-% Plot a frame
-frame = size(img,ndims(img));
-figure('WindowState','maximized');
-im('mid3',img(:,:,:,frame),'cbar')
-title(sprintf('|image|, middle 3 planes of frame %d',frame));
-ylabel('y'); xlabel('x')
+figure('WindowState','maximized'); tiledlayout(1,2,'TileSpacing','tight');
+% Plot temporally averaged k-space
+% nexttile; im('mid3', log(abs(ksp_zf(:,:,:,16))),'cbar');
+% title('|k-space|, middle 3 planes, coil #16');
+
+% Plot total sampling mask
+nexttile; im('blue0', omega);
+title('number of samples acquired at each location (blue = not sampled)');
+xlabel('ky'); ylabel('kz');
+
+% Plot static image
+nexttile; im('mid3',img,'cbar');
+title('|image|, middle 3 planes');
+
+% Plot a frame of time series
+% frame = size(img,ndims(img));
+% figure('WindowState','maximized');
+% im('mid3',img(:,:,:,frame),'cbar')
+% title(sprintf('|image|, middle 3 planes of frame %d',frame));
+% ylabel('y'); xlabel('x')
 
 %% Plot Sensitivity maps
 if doSENSE
@@ -264,6 +290,6 @@ end
 
 return;
 %% Save for next step of recon
-save(strcat(datdir,'recon/kdata.mat'),'ksp_zf','-v7.3');
+save(strcat(datdir,'recon/kdata.mat'),'ksp_mc','-v7.3');
 save(strcat(datdir,'recon/smaps.mat'),'smaps','-v7.3');
 
