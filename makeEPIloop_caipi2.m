@@ -178,7 +178,7 @@ samp_log = zeros(NframesPerLoop, ...
 rf_count = 1;
 rf_phase = rf_phase_0;
 
-for frame = 1:NframesPerLoop
+for frame = 1:1
     fprintf('Writing frame %d\n', frame)
     % Load in kz-ky sampling mask
     omega = omegas(:,:,frame);
@@ -308,8 +308,8 @@ return;
 figure('WindowState','maximized');
 plot(ktraj(2,:),ktraj(3,:),'b'); % a 2D k-space plot
 axis('equal'); % enforce aspect ratio for the correct trajectory display
-hold; plot(ktraj_adc(2,:),ktraj_adc(3,:),'r.'); % plot the sampling points
-title('full k-space trajectory (k_y x k_z)');
+hold; plot(ktraj_adc(2,:),ktraj_adc(3,:),'r.', 'MarkerSize', 10); % plot the sampling points
+title('full k-space trajectory (k_y x k_z)'); 
 xlabel('k_y'); ylabel('k_z');
 
 return;

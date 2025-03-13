@@ -72,8 +72,12 @@ function [omega, acs_indices_z, nacs_indices_samp_z] = randsamp2d_caipi2(N, R, a
     Nz_nacs = round(Nz/Rz/caipi_z - Nz_acs);
 
     % Genearte Gaussian pdf of sampling non-ACS locations
-    w_y = normpdf(nacs_indices_y, mean(1:Ny), Ny/6);
-    w_z = normpdf(nacs_indices_z, mean(1:Nz), Nz/6);
+    % w_y = normpdf(nacs_indices_y, mean(1:Ny), Ny/6);
+    % w_z = normpdf(nacs_indices_z, mean(1:Nz), Nz/6);
+
+    % Genearte uniform pdf of sampling non-ACS locations
+    w_y = ones(size(nacs_indices_y));
+    w_z = ones(size(nacs_indices_z));
 
     % Generate sampling locations along kz
     nacs_indices_samp_z = zeros(1, Nz_nacs);

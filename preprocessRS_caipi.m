@@ -18,11 +18,13 @@ Nframes = Nloops*NframesPerLoop;
 datdir = '/mnt/storage/rexfung/20250117ball/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'loop13.h5');
-fn_samp_log = strcat(datdir,'samp_logs/13.mat');
+fn_loop = strcat(datdir,'loop18.h5');
+fn_samp_log = strcat(datdir,'samp_logs/18.mat');
+fn_smaps = strcat(datdir,'smaps.mat');
 
 % Options
-doSENSE = true; % Takes a while
+doSENSE = false; % Takes a while
+SENSE_meth = 'pisco';
 showEPIphaseDiff = true;
 
 %% Load data
@@ -125,30 +127,24 @@ for frame = 1:Nframes
     end
 end
 
+%% Free up memory
+clear ksp_loop_cart ksp_loop ksp_loop_raw;
+
 %% Rebuild sampling mask from samp_log
-omega = zeros(Ny, Nz);
+omega = false(Ny, Nz, Nframes);
 for f = 1:size(samp_log, 1)
     for k = 1:size(samp_log, 2)
-        omega(samp_log(f,k,1), samp_log(f,k,2)) = omega(samp_log(f,k,1), samp_log(f,k,2)) + 1;
+        omega(samp_log(f,k,1), samp_log(f,k,2), f) = true;
     end
 end
 
-%% Average across temporal dimension
-ksp_mc = sum(ksp_zf,5)./permute(repmat(omega,[1 1 Nx Ncoils]), [3 1 2 4]);
+%% Average acquired samples across temporal dimension
+nsamps = sum(omega,3);
+ksp_mc = sum(ksp_zf,5)./permute(repmat(nsamps,[1 1 Nx Ncoils]), [3 1 2 4]);
 ksp_mc(isnan(ksp_mc)) = 0;
 
 %% IFFT to get images
-imgs_mc = ifftshift(ifft(...
-                     ifft(...
-                      ifft(...
-                       fftshift(ksp_mc)...
-                       , Nx, 1)...
-                      , Ny, 2)...
-                     , Nz, 3)...
-                    );
-
-%% Free up memory
-% clear ksp_loop_cart ksp_loop ksp_loop_raw;
+imgs_mc = toppe.utils.ift3(ksp_mc);
 
 %% Get sensitivity maps with either BART or PISCO
 % Reshape and permute gre data
@@ -156,91 +152,40 @@ ksp_gre = ksp_gre_raw(:,:,1:Ny_gre*Nz_gre); % discard trailing data
 ksp_gre = reshape(ksp_gre,Nx_gre,Ncoils,Ny_gre,Nz_gre);
 ksp_gre = permute(ksp_gre,[1 3 4 2]); % [Nx Ny Nz Ncoils]
 
-smaps_technique = 'pisco';
 if doSENSE
-    if strcmp(smaps_technique, 'pisco')
-        fprintf('Estimating sensitivity maps from GRE data via PISCO...\n')
-        % PISCO options
-        tau = 3;
-        threshold = 0.05;
-        kernel_shape = 1;
-        FFT_nullspace_C_calculation = 1;
-        PowerIteration_G_nullspace_vectors = 1;
-        M = 20;
-        PowerIteration_flag_convergence = 1;
-        PowerIteration_flag_auto = 1;
-        FFT_interpolation = 1;
-        interp_zp = 24;
-        gauss_win_param = 100;
-        verbose = 0;
-
-        tic
-            % Only use central (high SNR) region of k-space to estimate smaps
-            cal_length = 32; % Length of each dimension of the calibration data
-            center_x = ceil(Nx_gre/2) + ~rem(Nx_gre,2);
-            center_y = ceil(Ny_gre/2) + ~rem(Ny_gre,2);
-            cal_index_x = center_x + (-floor(cal_length/2):floor(cal_length/2) - ~rem(cal_length/2,2));
-            cal_index_y = center_y + (-floor(cal_length/2):floor(cal_length/2) - ~rem(cal_length/2,2));
-        
-            % Compute smaps slice-by-slice
-            tmp = ifftshift(ifft(fftshift(ksp_gre),Nz_gre,3));
-            smaps_raw = zeros(Nx_gre, Ny_gre, Nz_gre, Ncoils);
-            eigmaps = zeros(Nx_gre, Ny_gre, Nz_gre);
-            
-            parfor z = 1:Nz_gre
-                fprintf('estimate z = %d\n', round(z));
-                [smaps_tmp, eigvals] = PISCO_senseMaps_estimation(...
-                    squeeze(tmp(cal_index_x,cal_index_y,z,:)),...
-                    [Nx_gre, Ny_gre],...
-                    tau,...
-                    threshold,...
-                    kernel_shape,...
-                    FFT_nullspace_C_calculation,...
-                    PowerIteration_G_nullspace_vectors,...
-                    M,...
-                    PowerIteration_flag_convergence,...
-                    PowerIteration_flag_auto,...
-                    FFT_interpolation,...
-                    interp_zp,...
-                    gauss_win_param,...
-                    verbose...
-                );
-        
-                % Normalize
-                smaps_tmp = smaps_tmp./sqrt(sum(abs(smaps_tmp).^2, 3));
-        
-                % Allocate
-                smaps_raw(:,:,z,:) = smaps_tmp;
-                eigmaps(:,:,z,:) = eigvals;
-            end
-        toc
-    elseif strcmp(smaps_technique,'bart')
-        fprintf('Estimating sensitivity maps from GRE data via BART...\n')
-        tic
-            [calib, emaps] = bart('ecalib -r 20', ksp_gre);
-            smaps_raw = squeeze(calib(:,:,:,:,1));
-        toc
-    end
-
-    % Mask
-    smaps = smaps_raw;
-    % smaps(repmat(eigmaps>8*threshold,1,1,1,32)) = 0;
-
-    % Crop in z to match EPI FoV
-    z_start = round((fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre + 1);
-    z_end = round(Nz_gre - (fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre);
-    smaps = smaps(:,:,z_start:z_end,:);
-
-    % Interpolate to match EPI data dimensions
-    smaps_new = zeros(Nx,Ny,Nz,Ncoils);
-    for coil = 1:Ncoils
-        smaps_new(:,:,:,coil) = imresize3(smaps(:,:,:,coil),[Nx,Ny,Nz]);
-    end
-    smaps = smaps_new; clear smaps_new;
+    if exist(fn_smaps, 'file')
+        load(fn_smaps);
+    else
+        fprintf('Estimating sensitivity maps from GRE data via %s...\n', SENSE_meth)
     
-    % Align x-direction of smaps with EPI data
-    smaps = flip(smaps,1);
+        % Compute sensitivity maps
+        tic
+            smaps_raw = makeSmaps(ksp_gre, SENSE_meth);
+        toc
+    
+        % Mask
+        smaps = smaps_raw;
+        % smaps(repmat(eigmaps>8*threshold,1,1,1,32)) = 0;
+    
+        % Crop in z to match EPI FoV
+        z_start = round((fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre + 1);
+        z_end = round(Nz_gre - (fov_gre(3) - fov(3))/fov_gre(3)/2*Nz_gre);
+        smaps = smaps(:,:,z_start:z_end,:);
+    
+        % Interpolate to match EPI data dimensions
+        smaps_new = zeros(Nx,Ny,Nz,Ncoils);
+        for coil = 1:Ncoils
+            smaps_new(:,:,:,coil) = imresize3(smaps(:,:,:,coil),[Nx,Ny,Nz]);
+        end
+        smaps = smaps_new; clear smaps_new;
+
+        % Save for next time
+        save(fn_smaps, 'smaps', '-v7.3');
+    end
 end
+
+%% Align x-direction of smaps with EPI data (sometimes necessary)
+% smaps = flip(smaps,1);
 
 %% Coil combination
 if doSENSE
@@ -265,13 +210,14 @@ figure('WindowState','maximized'); tiledlayout(1,2,'TileSpacing','tight');
 % title('|k-space|, middle 3 planes, coil #16');
 
 % Plot total sampling mask
-nexttile; im('blue0', omega);
-title('number of samples acquired at each location (blue = not sampled)');
+nexttile; im('blue0', nsamps);
+title(sprintf('number of samples acquired at each location (blue = 0, white = %d)', max(nsamps(:))));
 xlabel('ky'); ylabel('kz');
 
 % Plot static image
 nexttile; im('mid3',img,'cbar');
 title('|image|, middle 3 planes');
+xlabel('x / z'); ylabel('z / y');
 
 % Plot a frame of time series
 % frame = size(img,ndims(img));
@@ -280,6 +226,8 @@ title('|image|, middle 3 planes');
 % title(sprintf('|image|, middle 3 planes of frame %d',frame));
 % ylabel('y'); xlabel('x')
 
+return;
+
 %% Plot Sensitivity maps
 if doSENSE
     figure('WindowState','maximized');
@@ -287,8 +235,6 @@ if doSENSE
     title('Sensitivity maps');
     ylabel('z direction'); xlabel('Coils');
 end
-
-return;
 %% Save for next step of recon
 save(strcat(datdir,'recon/kdata.mat'),'ksp_mc','-v7.3');
 save(strcat(datdir,'recon/smaps.mat'),'smaps','-v7.3');

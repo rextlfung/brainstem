@@ -28,11 +28,11 @@ switch mode
         acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
     case 'rand_caipi'
-        Ry = 1; Rz = 1;
+        Ry = 2; Rz = 1;
         R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
         acs = [1/8 1/8];                % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
-        caipi_z = 1;                    % Number of kz locations to acquire per partition
+        caipi_z = 3;                    % Number of kz locations to acquire per partition
 end
 
 % Number of shots per volume
