@@ -14,13 +14,13 @@ sysGE = toppe.systemspecs('maxGrad', sys.maxGrad/sys.gamma*100, ...   % G/cm
 CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
 % Basic spatial parameters
-res = [1.8 1.8 1.8]*1e-3; % resolution (m)
-fov = [18, 18, 9]*1e-2; % field of view (m)
-N = round(fov./res); % acquisiton tensor size
+res = [2.4 2.4 2.4]*1e-3; % resolution (m)
+N = [90 90 20]; % acquisition tensor size
+fov = N .* res; % field of view (m)
 Nx = N(1); Ny = N(2); Nz = N(3);
 
-
 % Random sampling parameters
+mode = 'rand_caipi';
 switch mode
     case 'rand'
         Ry = 2; Rz = 3;
@@ -28,11 +28,11 @@ switch mode
         acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
     case 'rand_caipi'
-        Ry = 2; Rz = 1;
+        Ry = 1; Rz = 1;
         R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
         acs = [1/8 1/8];                % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
-        caipi_z = 3;                    % Number of kz locations to acquire per partition
+        caipi_z = 1;                    % Number of kz locations to acquire per partition
 end
 
 % Number of shots per volume
@@ -51,10 +51,9 @@ NframesPerLoop = lcm(40,Nshots)/Nshots; % number of temporal frames to complete 
 dwell = 4e-6;                       % ADC sample time (s). For GE, must be multiple of 2us.
 
 % Decay parameters
-TE = 40e-3;                         % echo time (s)
-volumeTR = 0.9;                     % temporal frame rate (s)
-TR = volumeTR/Nshots;               % time to acquire one shot (s)
-TR = 90e-3;
+TE = 30e-3;                         % echo time (s)
+volumeTR = 1.6;                     % temporal frame rate (s)
+TR = volumeTR / Nshots;             % repetition time (s)
 T1 = 1500e-3;                       % T1 (s)
 
 % Exciting stuff

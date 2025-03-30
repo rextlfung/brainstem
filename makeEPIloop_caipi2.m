@@ -6,7 +6,6 @@
 % Rex Fung
 
 %% Definte experiment parameters
-mode = 'rand_caipi';
 setEPIparams;
 
 % TEMPORARY MODIFICATIONS
@@ -72,24 +71,28 @@ deltak = 1./fov;
 % Start with the blips. Ensure long enough to support the largest blips
 gyBlip = mr.scaleGrad(mr.makeTrapezoid('y', sys, 'area', max_ky_step*deltak(2)), 1/max_ky_step);
 gyBlip = trap4ge(gyBlip,CRT,sys);
-gzBlip = mr.scaleGrad(mr.makeTrapezoid('z', sys, 'area', (caipi_z - 1)*deltak(3)), 1/(caipi_z - 1));
+if caipi_z > 1
+    gzBlip = mr.scaleGrad(mr.makeTrapezoid('z', sys, 'area', (caipi_z - 1)*deltak(3)), 1/(caipi_z - 1));
+else
+    gzBlip = mr.scaleGrad(mr.makeTrapezoid('z', sys, 'area', (caipi_z - 1)*deltak(3)), 1);
+end
 gzBlip = trap4ge(gzBlip,CRT,sys);
 
-% Area and duration of the biggest blip (in y or z)
-if max_ky_step*deltak(2) > (caipi_z - 1)*deltak(3) % biggest blip in y
+% Area and duration of the longest blip (in y or z)
+if mr.calcDuration(gyBlip) > mr.calcDuration(gzBlip) % biggest blip in y
     maxBlipArea = max_ky_step*deltak(2);
     blipDuration = mr.calcDuration(gyBlip);
 
     % Remake the other blips to match duration
     gzBlip = mr.makeTrapezoid('z', sys, 'area', deltak(3), 'duration', blipDuration);
-    gzBlip = trap4ge(gzBlip,CRT,sys);
+    % gzBlip = trap4ge(gzBlip,CRT,sys);
 else % biggest blip in z
     maxBlipArea = (caipi_z - 1)*deltak(3);
     blipDuration = mr.calcDuration(gzBlip);
 
     % Remake the other blips to match duration
     gyBlip = mr.makeTrapezoid('y', sys, 'area', deltak(2), 'duration', blipDuration);
-    gyBlip = trap4ge(gyBlip,CRT,sys);
+    % gyBlip = trap4ge(gyBlip,CRT,sys);
 end
 
 % Readout trapezoid
@@ -290,7 +293,7 @@ seq.write(strcat(seqname, '.seq'));
 % Shouldn't be a problem since I don't have back-to-back blocks with adc.
 sysGE.adcDeadTime = 0;
 
-% write to GE compatible files
+% write to GE compatible filesresults
 seq2ge(strcat(seqname, '.seq'), sysGE, strcat(seqname, '.tar'))
 system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 
