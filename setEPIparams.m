@@ -51,7 +51,7 @@ NframesPerLoop = lcm(40,Nshots)/Nshots; % number of temporal frames to complete 
 dwell = 4e-6;                       % ADC sample time (s). For GE, must be multiple of 2us.
 
 % Decay parameters
-TE = 30e-3;                         % echo time (s)
+TE = 32e-3;                         % echo time (s)
 volumeTR = 1.6;                     % temporal frame rate (s)
 TR = volumeTR / Nshots;             % repetition time (s)
 T1 = 1500e-3;                       % T1 (s)

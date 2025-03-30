@@ -181,7 +181,7 @@ samp_log = zeros(NframesPerLoop, ...
 rf_count = 1;
 rf_phase = rf_phase_0;
 
-for frame = 1:1
+for frame = 1:NframesPerLoop
     fprintf('Writing frame %d\n', frame)
     % Load in kz-ky sampling mask
     omega = omegas(:,:,frame);
