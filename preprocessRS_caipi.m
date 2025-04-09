@@ -15,15 +15,15 @@ Nloops = 1; % Defined as toppe cv 8 at scanner
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20250117ball/';
+datdir = '/mnt/storage/rexfung/20250330ball/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'loop18.h5');
-fn_samp_log = strcat(datdir,'samp_logs/18.mat');
+fn_loop = strcat(datdir,'loop1.h5');
+fn_samp_log = strcat(datdir,'samp_logs/loop.mat');
 fn_smaps = strcat(datdir,'smaps.mat');
 
 % Options
-doSENSE = false; % Takes a while
+doSENSE = true; % Takes a while
 SENSE_meth = 'pisco';
 showEPIphaseDiff = true;
 
@@ -139,12 +139,16 @@ for f = 1:size(samp_log, 1)
 end
 
 %% Average acquired samples across temporal dimension
-nsamps = sum(omega,3);
-ksp_mc = sum(ksp_zf,5)./permute(repmat(nsamps,[1 1 Nx Ncoils]), [3 1 2 4]);
-ksp_mc(isnan(ksp_mc)) = 0;
+% nsamps = sum(omega,3);
+% ksp_mc = sum(ksp_zf,5)./permute(repmat(nsamps,[1 1 Nx Ncoils]), [3 1 2 4]);
+% ksp_mc(isnan(ksp_mc)) = 0;
+ksp_mc = ksp_zf;
 
 %% IFFT to get images
-imgs_mc = toppe.utils.ift3(ksp_mc);
+imgs_mc = zeros(Nx, Ny, Nz, Ncoils, Nframes);
+for frame = 1:Nframes
+    imgs_mc(:,:,:,:,frame) = toppe.utils.ift3(ksp_mc(:,:,:,:,frame));
+end
 
 %% Get sensitivity maps with either BART or PISCO
 % Reshape and permute gre data
@@ -185,7 +189,7 @@ if doSENSE
 end
 
 %% Align x-direction of smaps with EPI data (sometimes necessary)
-% smaps = flip(smaps,1);
+smaps = flip(smaps,1);
 
 %% Coil combination
 if doSENSE
@@ -201,6 +205,7 @@ ksp_final = toppe.utils.ift3(img);
 img_gre_mc = toppe.utils.ift3(ksp_gre);
 img_gre = sqrt(sum(abs(img_gre_mc).^2,4));
 
+return;
 %% Viz
 close all;
 
