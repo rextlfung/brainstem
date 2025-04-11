@@ -12,14 +12,15 @@ setEPIparams;
 
 % Total number of frames
 Nloops = 1; % Defined as toppe cv 8 at scanner
+NframesPerLoop = 12;
 Nframes = Nloops*NframesPerLoop;
 
 % Filenames
-datdir = '/mnt/storage/rexfung/20250330ball/';
+datdir = '/mnt/storage/rexfung/20250411fingertap/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'loop1.h5');
-fn_samp_log = strcat(datdir,'samp_logs/loop.mat');
+fn_loop = strcat(datdir,'rest2.h5');
+fn_samp_log = strcat(datdir,'samp_logs/1x.mat');
 fn_smaps = strcat(datdir,'smaps.mat');
 
 % Options

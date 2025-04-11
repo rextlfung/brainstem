@@ -9,7 +9,7 @@
 setEPIparams;
 
 % TEMPORARY MODIFICATIONS
-NframesPerLoop = 20;
+NframesPerLoop = NframesPerLoop;
 %% Path and options
 seqname = '3DEPI_loop_rs';
 addpath('excitation');
@@ -300,7 +300,7 @@ system(sprintf('tar -xvf %s', strcat(seqname, '.tar')));
 return;
 %% Plot sequence
 figure();
-toppe.plotseq(sysGE, 'timeRange',[0, Nshots*max(minTR, TR)]);
+toppe.plotseq(sysGE, 'timeRange',[0, max(minTR, TR)]);
 fontsize(16,'points');
 
 return;
