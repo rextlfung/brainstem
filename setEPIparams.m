@@ -15,7 +15,7 @@ CRT = 20e-6; % Common raster time of Siemens: 10e-6, GE: 4e-6;
 
 % Basic spatial parameters
 res = [2.4 2.4 2.4]*1e-3; % resolution (m)
-N = [90 90 20]; % acquisition tensor size
+N = [90 90 60]; % acquisition tensor size
 fov = N .* res; % field of view (m)
 Nx = N(1); Ny = N(2); Nz = N(3);
 
@@ -28,9 +28,9 @@ switch mode
         acs = [1/16 1/16];              % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
     case 'rand_caipi'
-        Ry = 1; Rz = 1;
+        Ry = 1; Rz = 3;
         R = [Ry Rz];                    % Acceleration/undersampling factors in each direction
-        acs = [1/8 1/8];                % Central portion of ky-kz space to fully sample
+        acs = [24 12] ./ [Ny Nz];       % Central portion of ky-kz space to fully sample
         max_ky_step = round(Ny/16);     % Maximum gap in fast PE direction
         caipi_z = 1;                    % Number of kz locations to acquire per partition
 end
