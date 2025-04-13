@@ -11,7 +11,7 @@ setGREparams;
 setEPIparams;
 
 % Total number of frames
-Nloops = 1; % Defined as toppe cv 8 at scanner
+Nloops = 15; % Defined as toppe cv 8 at scanner
 NframesPerLoop = 12;
 Nframes = Nloops*NframesPerLoop;
 
@@ -19,7 +19,7 @@ Nframes = Nloops*NframesPerLoop;
 datdir = '/mnt/storage/rexfung/20250411fingertap/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'rest2.h5');
+fn_loop = strcat(datdir,'rest.h5');
 fn_samp_log = strcat(datdir,'samp_logs/1x.mat');
 fn_smaps = strcat(datdir,'smaps.mat');
 
@@ -50,8 +50,8 @@ ksp_gre_raw = ksp_gre_raw(:,:,(Ny_gre + 1):end);
 
 % discard unusual zeros in the middle of the data (currently unknown why
 % they exist) TODO: FIND OUT WHY
-non_zero_indices = (squeeze(sum(abs(ksp_loop_raw), [1 2])) ~= 0);
-ksp_loop_raw = ksp_loop_raw(:,:,non_zero_indices);
+% non_zero_indices = (squeeze(sum(abs(ksp_loop_raw), [1 2])) ~= 0);
+% ksp_loop_raw = ksp_loop_raw(:,:,non_zero_indices);
 
 % Print max real and imag parts to check for reasonable magnitude
 fprintf('Max real part of gre data: %d\n', max(real(ksp_gre_raw(:))))
@@ -62,6 +62,8 @@ fprintf('Max real part of loop data: %d\n', max(real(ksp_loop_raw(:))))
 fprintf('Max imag part of loop data: %d\n', max(imag(ksp_loop_raw(:))))
 
 %% Compute odd/even delays using calibration (blipless) data
+close all;
+
 % Reshape and permute calibration data (a single frame w/out blips)
 ksp_cal = ksp_cal_raw(:,:,1:Ny*Nz); % discard trailing data
 ksp_cal = reshape(ksp_cal,Nfid,Ncoils,Ny,Nz);
@@ -70,8 +72,9 @@ ksp_cal = permute(ksp_cal,[1 3 4 2]); % [Nfid Ny Nz Ncoils]
 % Estimate k-space center offset due to gradient delay
 cal_data = reshape(abs(ksp_cal),Nfid,Ny,Nz,Ncoils);
 cal_data(:,1:2:end,:,:) = flip(cal_data(:,1:2:end,:,:),1);
-[M, I] = max(cal_data,[],1);
+[M, I] = max(cal_data(:,:,:,:),[],1);
 delay = Nfid/2 - mean(I,'all');
+delay = delay/2;
 fprintf('Estimated offset from center of k-space (samples): %f\n', delay);
 
 % retrieve sample locations from .mod file with adc info
@@ -129,7 +132,7 @@ for frame = 1:Nframes
 end
 
 %% Free up memory
-clear ksp_loop_cart ksp_loop ksp_loop_raw;
+clear ksp_loop_cart ksp_loop;
 
 %% Rebuild sampling mask from samp_log
 omega = false(Ny, Nz, Nframes);
@@ -184,13 +187,13 @@ if doSENSE
         end
         smaps = smaps_new; clear smaps_new;
 
+        % Align x-direction of smaps with EPI data (sometimes necessary)
+        % smaps = flip(smaps,1);
+
         % Save for next time
         save(fn_smaps, 'smaps', '-v7.3');
     end
 end
-
-%% Align x-direction of smaps with EPI data (sometimes necessary)
-smaps = flip(smaps,1);
 
 %% Coil combination
 if doSENSE
@@ -206,6 +209,7 @@ ksp_final = toppe.utils.ift3(img);
 img_gre_mc = toppe.utils.ift3(ksp_gre);
 img_gre = sqrt(sum(abs(img_gre_mc).^2,4));
 
+interactive4D(abs(img));
 return;
 %% Viz
 close all;
