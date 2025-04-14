@@ -9,7 +9,7 @@
 setEPIparams;
 
 % TEMPORARY MODIFICATIONS
-NframesPerLoop = NframesPerLoop;
+NframesPerLoop = 12;
 %% Path and options
 seqname = '3DEPI_loop_rs';
 addpath('excitation');
@@ -34,7 +34,7 @@ fatsat.dur     = 6.0;     % pulse duration (ms)
 wav = toppe.utils.rf.makeslr(fatsat.flip, fatsat.slThick, fatsat.tbw, fatsat.dur, 1e-6, toppe.systemspecs(), ...
     'type', 'ex', ... % fatsat pulse is a 90 so is of type 'ex', not 'st' (small-tip)
     'ftype', 'min', ...
-    'writeModFile', false);  
+    'writeModFile', false);
 
 % Convert from Gauss to Hz, and interpolate to sys.rfRasterTime
 rfp = rf2pulseq(wav, 4e-6, sys.rfRasterTime);
@@ -120,10 +120,6 @@ gzBlip.delay = Tread;
 gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2),CRT,sys);
 gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2)),CRT,sys);
 gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3)),CRT,sys);
-Tpre = max([mr.calcDuration(gxPre),mr.calcDuration(gyPre),mr.calcDuration(gzPre)]);
-gxPre = trap4ge(mr.makeTrapezoid('x',sys,'Area',-(Nx*deltak(1) + maxBlipArea)/2,'Duration',Tpre),CRT,sys);
-gyPre = trap4ge(mr.makeTrapezoid('y',sys,'Area',-Ny/2*deltak(2),'Duration',Tpre),CRT,sys);
-gzPre = trap4ge(mr.makeTrapezoid('z',sys,'Area',-Nz/2*deltak(3),'Duration',Tpre),CRT,sys);
 
 % Spoilers (conventionally only in x and z because ??, might as well do so in y)
 gxSpoil = trap4ge(mr.makeTrapezoid('x', sys, ...
