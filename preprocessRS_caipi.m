@@ -11,7 +11,7 @@ setGREparams;
 setEPIparams;
 
 % Total number of frames
-Nloops = 15; % Defined as toppe cv 8 at scanner
+Nloops = 16; % Defined as toppe cv 8 at scanner
 NframesPerLoop = 12;
 Nframes = Nloops*NframesPerLoop;
 
@@ -19,7 +19,7 @@ Nframes = Nloops*NframesPerLoop;
 datdir = '/mnt/storage/rexfung/20250411fingertap/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'rest.h5');
+fn_loop = strcat(datdir,'right.h5');
 fn_samp_log = strcat(datdir,'samp_logs/1x.mat');
 fn_smaps = strcat(datdir,'smaps.mat');
 
@@ -116,6 +116,9 @@ ksp_loop_cart = hmriutils.epi.epiphasecorrect(ksp_loop_cart, a);
 %% Create zero-filled k-space data
 ksp_zf = zeros(Nx,Ny,Nz,Ncoils,Nframes);
 load(fn_samp_log);
+
+% Replicate samp_log to the number of experiment loops
+samp_log = repmat(samp_log, [Nloops, 1, 1]);
 
 % Read through log of sample locations and allocate data
 for frame = 1:Nframes
