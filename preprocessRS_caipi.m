@@ -19,7 +19,7 @@ Nframes = Nloops*NframesPerLoop;
 datdir = '/mnt/storage/rexfung/20250411fingertap/';
 fn_gre = strcat(datdir,'gre.h5');
 fn_cal = strcat(datdir,'cal.h5');
-fn_loop = strcat(datdir,'right.h5');
+fn_loop = strcat(datdir,'rest.h5');
 fn_samp_log = strcat(datdir,'samp_logs/1x.mat');
 fn_smaps = strcat(datdir,'smaps.mat');
 

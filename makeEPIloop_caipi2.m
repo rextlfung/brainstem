@@ -9,7 +9,7 @@
 setEPIparams;
 
 % TEMPORARY MODIFICATIONS
-NframesPerLoop = 12;
+NframesPerLoop = 1;
 %% Path and options
 seqname = '3DEPI_loop_rs';
 addpath('excitation');
